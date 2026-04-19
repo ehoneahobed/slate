@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Next.js (monorepo app)
+apps/web/.next/
+apps/web/out/
+apps/web/.vercel
+apps/web/*.tsbuildinfo
+apps/web/next-env.d.ts
+
+# Tooling
+.idea/
+.vscode/
+*.pem

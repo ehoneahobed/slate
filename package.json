@@ -1,0 +1,19 @@
+{
+  "name": "slate",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "npm run dev -w web",
+    "build": "npm run build -w web",
+    "lint": "npm run lint -w web",
+    "typecheck": "npm run typecheck -w web",
+    "test": "npm run test -w web",
+    "db:generate": "npm run db:generate -w web",
+    "db:migrate": "npm run db:migrate -w web",
+    "db:push": "npm run db:push -w web",
+    "db:studio": "npm run db:studio -w web"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}

@@ -1,0 +1,15 @@
+# Local Postgres for development (Lightsail/production uses managed Postgres).
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: slate
+      POSTGRES_PASSWORD: slate
+      POSTGRES_DB: slate
+    volumes:
+      - slate_pg_data:/var/lib/postgresql/data
+
+volumes:
+  slate_pg_data:

@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Slate — Design System (Print)</title>
+<style>
+@page { size: A4; margin: 14mm 14mm; }
+@media print {
+  html, body { background: #efe8d9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  nav, .toc, footer { display: none !important; }
+  .two { grid-template-columns: 1fr !important; gap: 0 !important; }
+  .wrap { max-width: none !important; padding: 0 !important; }
+  h1 { font-size: 40px !important; }
+  h2 { font-size: 26px !important; }
+  .grain { display: none !important; }
+  .sec { padding: 12px 0 18px !important; break-inside: avoid; page-break-inside: avoid; }
+  #principles { break-before: auto; }
+  #color, #type, #space, #radius, #shadow, #buttons, #forms, #pills, #cards, #icons, #paper, #motion, #tokens {
+    break-before: page; page-break-before: always;
+  }
+  .card, .demo, .principle, .swatch, .type-card, .r-cell, .sh-cell, pre.code {
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .grid { gap: 10px !important; }
+  pre.code { white-space: pre-wrap; word-break: break-word; font-size: 10.5px !important; }
+}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* —— color: warm paper (default) —— */
+  --bg:#efe8d9; --paper:#f8f4ec; --paper-2:#f3ecdc;
+  --ink:#1f1c15; --ink-2:#4a4436; --ink-3:#7a7360; --ink-4:#ada48c;
+  --rule:#d9cfb4; --rule-2:#e8dfc6;
+  --chrome:#fbf8f1; --chrome-2:#efe8d5; --chrome-b:#dfd4b5;
+  --accent:oklch(0.58 0.13 45); --accent-2:oklch(0.72 0.10 45); --accent-soft:oklch(0.92 0.04 45);
+  --highlight:oklch(0.92 0.14 95 / 0.55);
+  --ok:oklch(0.58 0.12 145); --warn:oklch(0.72 0.13 85); --danger:oklch(0.55 0.17 25);
+  /* —— type —— */
+  --ui:"Inter",system-ui,sans-serif;
+  --serif:"Instrument Serif",Georgia,serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+  --hand:"Caveat",cursive;
+  /* —— radius —— */
+  --r-sm:6px; --r-md:10px; --r-lg:14px; --r-xl:22px; --r-full:999px;
+  /* —— shadow —— */
+  --shadow-1:0 1px 0 rgba(50,40,20,.04),0 1px 2px rgba(50,40,20,.06);
+  --shadow-2:0 1px 0 rgba(50,40,20,.05),0 6px 22px -8px rgba(50,40,20,.22);
+  --shadow-3:0 10px 40px -10px rgba(40,30,10,.25),0 2px 8px rgba(40,30,10,.10);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--ui);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.55}
+.grain{position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background-image:radial-gradient(rgba(50,40,20,.045) 1px,transparent 1px),radial-gradient(rgba(50,40,20,.03) 1px,transparent 1px);
+  background-size:3px 3px,7px 7px;mix-blend-mode:multiply;opacity:.35}
+
+nav{display:flex;align-items:center;gap:18px;padding:18px 28px;max-width:1280px;margin:0 auto}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-size:24px;text-decoration:none;color:inherit}
+.logo-mark{width:26px;height:26px;border-radius:6px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-family:var(--serif);font-style:italic;font-size:16px;line-height:1}
+.nav-link{color:var(--ink-3);font-size:13px;text-decoration:none}
+.nav-link:hover{color:var(--ink)}
+
+.wrap{max-width:1200px;margin:0 auto;padding:0 28px}
+h1{font-family:var(--serif);font-size:56px;line-height:1;margin:10px 0 8px;font-weight:400;letter-spacing:-.005em}
+.sub{color:var(--ink-3);font-size:16px;max-width:620px;margin:0 0 30px}
+h2{font-family:var(--serif);font-size:32px;line-height:1.1;margin:0 0 6px;font-weight:400}
+h3{font-family:var(--serif);font-size:20px;margin:0 0 10px;font-weight:400}
+
+.sec{padding:30px 0 50px;border-top:1px solid var(--rule)}
+.sec .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px}
+.sec p.lede{color:var(--ink-3);max-width:620px;margin:0 0 24px}
+
+.grid{display:grid;gap:14px}
+.g-6{grid-template-columns:repeat(6,1fr)}
+.g-5{grid-template-columns:repeat(5,1fr)}
+.g-4{grid-template-columns:repeat(4,1fr)}
+.g-3{grid-template-columns:repeat(3,1fr)}
+.g-2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:900px){.g-6,.g-5,.g-4{grid-template-columns:repeat(2,1fr)}}
+
+/* ——— color swatches ——— */
+.swatch{background:var(--paper);border:1px solid var(--rule);border-radius:var(--r-md);overflow:hidden;display:flex;flex-direction:column}
+.swatch .chip{height:80px;position:relative}
+.swatch .meta{padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.swatch .name{font-size:13px;font-weight:600}
+.swatch .hex{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.swatch .var{font-family:var(--mono);font-size:10.5px;color:var(--ink-4)}
+
+/* type specimens */
+.type-card{background:var(--paper);border:1px solid var(--rule);border-radius:var(--r-lg);padding:22px}
+.type-sample{margin-bottom:14px}
+.type-meta{display:flex;gap:16px;font-family:var(--mono);font-size:11px;color:var(--ink-3);padding-top:10px;border-top:1px dashed var(--rule-2)}
+.type-meta span{display:flex;gap:6px}
+.type-meta b{color:var(--ink)}
+
+/* component demo card */
+.demo{background:var(--paper);border:1px solid var(--rule);border-radius:var(--r-lg);padding:22px;display:flex;flex-direction:column;gap:14px}
+.demo-title{display:flex;align-items:baseline;justify-content:space-between;padding-bottom:10px;border-bottom:1px dashed var(--rule-2)}
+.demo-title h3{margin:0}
+.demo-title code{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.demo-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:var(--r-md);font-size:13px;font-weight:600;cursor:pointer;border:none;font-family:inherit}
+.btn-ink{background:var(--ink);color:var(--paper)}
+.btn-ghost{background:var(--paper-2);color:var(--ink);border:1px solid var(--chrome-b)}
+.btn-accent{background:var(--accent);color:#fff}
+.btn-danger{background:transparent;color:var(--danger);border:1px solid color-mix(in oklch,var(--danger) 40%, transparent)}
+.btn-icon{width:36px;height:36px;display:grid;place-items:center;padding:0;border-radius:var(--r-md);background:transparent;color:var(--ink-2);border:1px solid transparent;cursor:pointer}
+.btn-icon:hover{background:var(--chrome-2)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn-sm{padding:6px 10px;font-size:12px}
+.btn-lg{padding:12px 18px;font-size:14px}
+
+/* pills */
+.pill{padding:6px 12px;border-radius:var(--r-full);font-size:12px;border:1px solid var(--chrome-b);background:var(--paper-2);color:var(--ink-2);cursor:pointer}
+.pill.active{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+/* badges */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:var(--r-full);font-size:11px;font-weight:600}
+.badge.ok{background:color-mix(in oklch,var(--ok) 18%, transparent);color:var(--ok)}
+.badge.warn{background:color-mix(in oklch,var(--warn) 22%, transparent);color:#7a5a10}
+.badge.danger{background:color-mix(in oklch,var(--danger) 18%, transparent);color:var(--danger)}
+.badge.info{background:var(--accent-soft);color:var(--accent)}
+
+/* inputs */
+input[type="text"],input[type="email"],input[type="password"],select,textarea{
+  font-family:var(--ui);font-size:13.5px;color:var(--ink);
+  background:var(--paper-2);border:1px solid var(--rule);border-radius:var(--r-md);
+  padding:9px 12px;outline:none;width:100%;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--ink);background:#fff}
+.kbd{font-family:var(--mono);font-size:11px;background:var(--paper-2);border:1px solid var(--rule);border-radius:4px;padding:1px 6px;color:var(--ink-2)}
+.toggle{width:38px;height:22px;border-radius:var(--r-full);border:none;position:relative;cursor:pointer;background:var(--chrome-b);padding:0;flex-shrink:0}
+.toggle.on{background:var(--accent)}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:var(--r-full);background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.toggle.on::after{left:18px}
+
+/* card variants */
+.card{background:var(--paper);border:1px solid var(--rule);border-radius:var(--r-lg);padding:18px}
+.card-paper{background:var(--paper);border:1px solid var(--rule);border-radius:6px;box-shadow:0 18px 40px -26px rgba(40,30,10,.25),0 1px 0 rgba(50,40,20,.05)}
+.sticky{background:#fff2b0;color:#4a3d10;border-radius:3px;padding:14px 16px;font-family:var(--hand);font-size:20px;line-height:1.2;transform:rotate(-1.5deg);
+  box-shadow:0 8px 16px -8px rgba(0,0,0,.25), 0 2px 3px rgba(0,0,0,.08)}
+
+/* icon grid */
+.icons{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
+.icon-cell{background:var(--paper);border:1px solid var(--rule);border-radius:var(--r-md);padding:14px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--ink-2)}
+.icon-cell svg{width:22px;height:22px}
+.icon-cell .n{font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+
+/* spacing visualizer */
+.space-row{display:flex;align-items:center;gap:14px;padding:8px 0;border-bottom:1px dashed var(--rule-2)}
+.space-row:last-child{border-bottom:none}
+.space-row .name{font-family:var(--mono);font-size:12px;color:var(--ink);width:80px}
+.space-row .val{font-family:var(--mono);font-size:12px;color:var(--ink-3);width:60px}
+.space-row .bar{background:var(--ink);height:8px;border-radius:3px}
+
+/* radius visualizer */
+.r-cell{background:var(--ink);color:var(--paper);height:70px;display:grid;place-items:center;font-family:var(--mono);font-size:11px}
+
+/* shadow demo */
+.sh-cell{background:var(--paper);border:1px solid var(--rule);height:100px;display:grid;place-items:center;font-family:var(--mono);font-size:11px;color:var(--ink-3);border-radius:var(--r-md)}
+
+/* code block */
+pre.code{margin:0;padding:14px 16px;background:#1c1a17;color:#e9e4d6;font-family:var(--mono);font-size:12px;border-radius:var(--r-md);overflow:auto;line-height:1.55}
+pre.code .k{color:#c98a5e}
+pre.code .s{color:#b7d08a}
+pre.code .c{color:#8a8677}
+
+/* page type previews */
+.pt{height:80px;background:var(--paper);border-radius:6px;position:relative;overflow:hidden;border:1px solid var(--rule)}
+.pt.ruled{background-image:repeating-linear-gradient(transparent 0 15px,var(--rule) 15px 16px)}
+.pt.grid{background-image:linear-gradient(var(--rule-2) 1px,transparent 1px),linear-gradient(90deg,var(--rule-2) 1px,transparent 1px);background-size:10px 10px}
+
+/* principles */
+.principle{background:var(--paper);border:1px solid var(--rule);border-radius:var(--r-lg);padding:22px;position:relative}
+.principle .n{font-family:var(--serif);font-size:36px;color:var(--accent);line-height:1;font-style:italic}
+.principle h3{margin:8px 0 6px;font-size:20px}
+.principle p{margin:0;color:var(--ink-3);font-size:13.5px}
+
+/* page nav (sticky) */
+.toc{position:sticky;top:18px;align-self:start;display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+.toc a{color:var(--ink-3);text-decoration:none;padding:5px 10px;border-radius:6px;display:block}
+.toc a:hover{background:var(--paper);color:var(--ink)}
+.toc .t{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);margin:12px 10px 4px}
+
+.two{display:grid;grid-template-columns:200px 1fr;gap:40px}
+@media(max-width:900px){.two{grid-template-columns:1fr}.toc{position:static}}
+</style>
+</head>
+<body>
+<div class="grain"></div>
+
+<nav>
+  <a href="landing.html" class="logo"><span class="logo-mark">S</span> Slate</a>
+  <div style="flex:1"></div>
+  <a href="landing.html" class="nav-link">Landing</a>
+  <a href="Whiteboard.html" class="nav-link">App</a>
+  <a href="settings.html" class="nav-link">Settings</a>
+  <a href="#" class="nav-link" style="color:var(--ink);font-weight:600">Design system</a>
+</nav>
+
+<div class="wrap" style="margin-top:10px">
+  <span class="eyebrow" style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)">v1.0 · for engineering handoff</span>
+  <h1>The Slate design system.</h1>
+  <p class="sub">Tokens, components, and a short list of principles. Built to survive the first fifty screens.</p>
+</div>
+
+<div class="wrap two">
+
+<nav class="toc">
+  <span class="t">On this page</span>
+  <a href="#principles">Principles</a>
+  <a href="#color">Color</a>
+  <a href="#type">Typography</a>
+  <a href="#space">Spacing</a>
+  <a href="#radius">Radius</a>
+  <a href="#shadow">Shadow</a>
+  <a href="#buttons">Buttons</a>
+  <a href="#forms">Forms</a>
+  <a href="#pills">Pills &amp; Badges</a>
+  <a href="#cards">Cards</a>
+  <a href="#icons">Icons</a>
+  <a href="#paper">Paper & pages</a>
+  <a href="#motion">Motion</a>
+  <a href="#tokens">Exported tokens</a>
+</nav>
+
+<div>
+
+<!-- PRINCIPLES -->
+<section id="principles" class="sec" style="border-top:none;padding-top:0">
+  <span class="eyebrow">Principles</span>
+  <h2>The five ideas behind every pixel.</h2>
+  <p class="lede">When in doubt, choose the option that makes Slate feel more like a trusted book, and less like software.</p>
+  <div class="grid g-3">
+    <div class="principle"><div class="n">01</div><h3>Paper first</h3><p>Warm, slightly-textured cream surface; ink for content. Chrome is the accent — never the star.</p></div>
+    <div class="principle"><div class="n">02</div><h3>Ink is sacred</h3><p>Everything the user drew is foreground. Our UI fades back — glass bars, soft borders, muted ink tones.</p></div>
+    <div class="principle"><div class="n">03</div><h3>Calm color</h3><p>Single warm terracotta accent. Use it for state, not decoration. One accent on screen at a time.</p></div>
+    <div class="principle"><div class="n">04</div><h3>Type as ritual</h3><p>Serif titles, clean sans UI, hand for annotations. Three voices, always in that order of importance.</p></div>
+    <div class="principle"><div class="n">05</div><h3>Quiet interaction</h3><p>Short, gentle motion. No bounce. No confetti. Respect <code>prefers-reduced-motion</code>.</p></div>
+    <div class="principle"><div class="n">06</div><h3>A11y is non-negotiable</h3><p>WCAG AA for text, 3:1 for chrome. Focus rings are <i>more</i> visible, not less. Keyboard-first.</p></div>
+  </div>
+</section>
+
+<!-- COLOR -->
+<section id="color" class="sec">
+  <span class="eyebrow">Color</span>
+  <h2>One warm palette.</h2>
+  <p class="lede">All colors referenced by CSS variable. Never hardcode hex in component code.</p>
+
+  <h3 style="margin-top:20px">Surface</h3>
+  <div class="grid g-6">
+    <div class="swatch"><div class="chip" style="background:#efe8d9"></div><div class="meta"><span class="name">Bg</span><span class="hex">#efe8d9</span><span class="var">--bg</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#f8f4ec"></div><div class="meta"><span class="name">Paper</span><span class="hex">#f8f4ec</span><span class="var">--paper</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#f3ecdc"></div><div class="meta"><span class="name">Paper 2</span><span class="hex">#f3ecdc</span><span class="var">--paper-2</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#fbf8f1"></div><div class="meta"><span class="name">Chrome</span><span class="hex">#fbf8f1</span><span class="var">--chrome</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#efe8d5"></div><div class="meta"><span class="name">Chrome 2</span><span class="hex">#efe8d5</span><span class="var">--chrome-2</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#dfd4b5"></div><div class="meta"><span class="name">Chrome border</span><span class="hex">#dfd4b5</span><span class="var">--chrome-b</span></div></div>
+  </div>
+
+  <h3 style="margin-top:24px">Ink</h3>
+  <div class="grid g-4">
+    <div class="swatch"><div class="chip" style="background:#1f1c15"></div><div class="meta"><span class="name">Ink</span><span class="hex">#1f1c15</span><span class="var">--ink</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#4a4436"></div><div class="meta"><span class="name">Ink 2</span><span class="hex">#4a4436</span><span class="var">--ink-2</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#7a7360"></div><div class="meta"><span class="name">Ink 3 (muted)</span><span class="hex">#7a7360</span><span class="var">--ink-3</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#ada48c"></div><div class="meta"><span class="name">Ink 4 (faint)</span><span class="hex">#ada48c</span><span class="var">--ink-4</span></div></div>
+  </div>
+
+  <h3 style="margin-top:24px">Accent &amp; state</h3>
+  <div class="grid g-5">
+    <div class="swatch"><div class="chip" style="background:var(--accent)"></div><div class="meta"><span class="name">Accent</span><span class="hex">oklch(.58 .13 45)</span><span class="var">--accent</span></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--accent-2)"></div><div class="meta"><span class="name">Accent 2</span><span class="hex">oklch(.72 .10 45)</span><span class="var">--accent-2</span></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--accent-soft)"></div><div class="meta"><span class="name">Accent soft</span><span class="hex">oklch(.92 .04 45)</span><span class="var">--accent-soft</span></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--ok)"></div><div class="meta"><span class="name">Success</span><span class="hex">oklch(.58 .12 145)</span><span class="var">--ok</span></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--danger)"></div><div class="meta"><span class="name">Danger</span><span class="hex">oklch(.55 .17 25)</span><span class="var">--danger</span></div></div>
+  </div>
+
+  <h3 style="margin-top:24px">Ink for drawing (pen colors)</h3>
+  <p style="color:var(--ink-3);margin-top:0">Default palette offered in the pen color picker. All share roughly equal weight on paper.</p>
+  <div class="grid g-4">
+    <div class="swatch"><div class="chip" style="background:#1f1c15"></div><div class="meta"><span class="name">Graphite</span><span class="hex">#1f1c15</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#b9432b"></div><div class="meta"><span class="name">Red</span><span class="hex">#b9432b</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#b9722e"></div><div class="meta"><span class="name">Ochre</span><span class="hex">#b9722e</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#8a7215"></div><div class="meta"><span class="name">Olive</span><span class="hex">#8a7215</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#3b6e86"></div><div class="meta"><span class="name">Teal</span><span class="hex">#3b6e86</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#5a7f4a"></div><div class="meta"><span class="name">Sage</span><span class="hex">#5a7f4a</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#6b5aa6"></div><div class="meta"><span class="name">Violet</span><span class="hex">#6b5aa6</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#c24b7a"></div><div class="meta"><span class="name">Magenta</span><span class="hex">#c24b7a</span></div></div>
+  </div>
+</section>
+
+<!-- TYPE -->
+<section id="type" class="sec">
+  <span class="eyebrow">Typography</span>
+  <h2>Three voices. Always in order.</h2>
+  <p class="lede">Serif for titles &amp; moments of warmth. Sans for every piece of UI. Monospace for data. Hand for user-made annotations only — never UI copy.</p>
+
+  <div class="grid g-2">
+    <div class="type-card">
+      <div class="type-sample" style="font-family:var(--serif);font-size:52px;line-height:1;font-weight:400">A notebook for teachers.</div>
+      <div class="type-meta"><span><b>Instrument Serif</b></span><span>Google Fonts</span><span>400 / 400 italic</span><span><code>var(--serif)</code></span></div>
+    </div>
+    <div class="type-card">
+      <div class="type-sample" style="font-family:var(--ui);font-size:28px;line-height:1.15;font-weight:500">The quick brown fox jumps — 0123</div>
+      <div class="type-meta"><span><b>Inter</b></span><span>400 / 500 / 600 / 700</span><span><code>var(--ui)</code></span></div>
+    </div>
+    <div class="type-card">
+      <div class="type-sample" style="font-family:var(--mono);font-size:20px;line-height:1.4;color:var(--ink-2)">θ<sub>t+1</sub> = θ<sub>t</sub> − η·∇L(θ)</div>
+      <div class="type-meta"><span><b>JetBrains Mono</b></span><span>400 / 500</span><span><code>var(--mono)</code></span></div>
+    </div>
+    <div class="type-card">
+      <div class="type-sample" style="font-family:var(--hand);font-size:40px;line-height:1;color:var(--ink)">exam tip ✶  halve η if loss oscillates</div>
+      <div class="type-meta"><span><b>Caveat</b></span><span>400 / 600 / 700</span><span><code>var(--hand)</code></span><span>user content only</span></div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:28px">Scale</h3>
+  <div class="card">
+    <table style="width:100%;border-collapse:collapse;font-size:13.5px">
+      <thead><tr style="text-align:left;color:var(--ink-3);font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em">
+        <th style="padding:8px 8px">Token</th><th>Size / line</th><th>Family</th><th>Use</th>
+      </tr></thead>
+      <tbody style="font-family:var(--mono);font-size:12px">
+        <tr style="border-top:1px dashed var(--rule-2)"><td style="padding:10px 8px">display</td><td>72 / 72</td><td>serif</td><td style="font-family:var(--ui);color:var(--ink-3)">Landing hero only</td></tr>
+        <tr style="border-top:1px dashed var(--rule-2)"><td style="padding:10px 8px">h1</td><td>42-56 / 1.05</td><td>serif</td><td style="font-family:var(--ui);color:var(--ink-3)">Page titles</td></tr>
+        <tr style="border-top:1px dashed var(--rule-2)"><td style="padding:10px 8px">h2</td><td>32 / 1.1</td><td>serif</td><td style="font-family:var(--ui);color:var(--ink-3)">Section titles</td></tr>
+        <tr style="border-top:1px dashed var(--rule-2)"><td style="padding:10px 8px">h3</td><td>20 / 1.25</td><td>serif</td><td style="font-family:var(--ui);color:var(--ink-3)">Card / modal titles</td></tr>
+        <tr style="border-top:1px dashed var(--rule-2)"><td style="padding:10px 8px">body</td><td>14 / 1.55</td><td>ui</td><td style="font-family:var(--ui);color:var(--ink-3)">Default</td></tr>
+        <tr style="border-top:1px dashed var(--rule-2)"><td style="padding:10px 8px">body-lg</td><td>16-18 / 1.5</td><td>ui</td><td style="font-family:var(--ui);color:var(--ink-3)">Landing lede</td></tr>
+        <tr style="border-top:1px dashed var(--rule-2)"><td style="padding:10px 8px">small</td><td>12.5 / 1.4</td><td>ui</td><td style="font-family:var(--ui);color:var(--ink-3)">Metadata, helper text</td></tr>
+        <tr style="border-top:1px dashed var(--rule-2)"><td style="padding:10px 8px">eyebrow</td><td>11 / 1.2 · .12em</td><td>mono</td><td style="font-family:var(--ui);color:var(--ink-3)">Section labels, UPPER</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- SPACING -->
+<section id="space" class="sec">
+  <span class="eyebrow">Spacing</span>
+  <h2>A 4-based scale.</h2>
+  <p class="lede">Use tokens — never ad-hoc pixel values. Anything not on the scale is a smell.</p>
+  <div class="card">
+    <div class="space-row"><span class="name">space-0.5</span><span class="val">2px</span><span class="bar" style="width:2px"></span></div>
+    <div class="space-row"><span class="name">space-1</span><span class="val">4px</span><span class="bar" style="width:4px"></span></div>
+    <div class="space-row"><span class="name">space-2</span><span class="val">8px</span><span class="bar" style="width:8px"></span></div>
+    <div class="space-row"><span class="name">space-3</span><span class="val">12px</span><span class="bar" style="width:12px"></span></div>
+    <div class="space-row"><span class="name">space-4</span><span class="val">16px</span><span class="bar" style="width:16px"></span></div>
+    <div class="space-row"><span class="name">space-5</span><span class="val">20px</span><span class="bar" style="width:20px"></span></div>
+    <div class="space-row"><span class="name">space-6</span><span class="val">24px</span><span class="bar" style="width:24px"></span></div>
+    <div class="space-row"><span class="name">space-8</span><span class="val">32px</span><span class="bar" style="width:32px"></span></div>
+    <div class="space-row"><span class="name">space-10</span><span class="val">40px</span><span class="bar" style="width:40px"></span></div>
+    <div class="space-row"><span class="name">space-12</span><span class="val">48px</span><span class="bar" style="width:48px"></span></div>
+    <div class="space-row"><span class="name">space-16</span><span class="val">64px</span><span class="bar" style="width:64px"></span></div>
+    <div class="space-row"><span class="name">space-20</span><span class="val">80px</span><span class="bar" style="width:80px"></span></div>
+  </div>
+</section>
+
+<!-- RADIUS -->
+<section id="radius" class="sec">
+  <span class="eyebrow">Radius</span>
+  <h2>Soft, not round.</h2>
+  <p class="lede">Max 22px for chrome; pages stay at 6px so they read as paper. Pills are full.</p>
+  <div class="grid g-5">
+    <div class="r-cell" style="border-radius:var(--r-sm)">sm · 6px</div>
+    <div class="r-cell" style="border-radius:var(--r-md)">md · 10px</div>
+    <div class="r-cell" style="border-radius:var(--r-lg)">lg · 14px</div>
+    <div class="r-cell" style="border-radius:var(--r-xl)">xl · 22px</div>
+    <div class="r-cell" style="border-radius:var(--r-full)">full · 999</div>
+  </div>
+</section>
+
+<!-- SHADOW -->
+<section id="shadow" class="sec">
+  <span class="eyebrow">Elevation</span>
+  <h2>Three levels. Warm, not grey.</h2>
+  <p class="lede">Shadows tint brown, not black. Never use pure <code>rgba(0,0,0,.x)</code>.</p>
+  <div class="grid g-3">
+    <div class="sh-cell" style="box-shadow:var(--shadow-1)">1 · Card at rest</div>
+    <div class="sh-cell" style="box-shadow:var(--shadow-2)">2 · Toolbar / glass</div>
+    <div class="sh-cell" style="box-shadow:var(--shadow-3)">3 · Modal</div>
+  </div>
+</section>
+
+<!-- BUTTONS -->
+<section id="buttons" class="sec">
+  <span class="eyebrow">Components — Buttons</span>
+  <h2>Hierarchy by weight.</h2>
+
+  <div class="demo">
+    <div class="demo-title"><h3>Variants</h3><code>&lt;Button variant="..." /&gt;</code></div>
+    <div class="demo-row">
+      <button class="btn btn-ink">Primary ink</button>
+      <button class="btn btn-ghost">Ghost</button>
+      <button class="btn btn-accent">Accent</button>
+      <button class="btn btn-danger">Danger</button>
+      <button class="btn btn-ink" disabled>Disabled</button>
+    </div>
+    <div class="demo-title" style="margin-top:8px"><h3>Sizes</h3><code>size="sm" | "md" | "lg"</code></div>
+    <div class="demo-row">
+      <button class="btn btn-ink btn-sm">Small</button>
+      <button class="btn btn-ink">Medium</button>
+      <button class="btn btn-ink btn-lg">Large</button>
+    </div>
+    <div class="demo-title" style="margin-top:8px"><h3>Icon buttons</h3><code>&lt;IconButton /&gt;</code></div>
+    <div class="demo-row" style="background:var(--paper-2);padding:8px;border-radius:var(--r-md);border:1px solid var(--rule)">
+      <button class="btn-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" width="18" height="18"><path d="M3 17l1.2-4 9.5-9.5a1.5 1.5 0 0 1 2.1 0l.7.7a1.5 1.5 0 0 1 0 2.1L7 15.8z"/></svg></button>
+      <button class="btn-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" width="18" height="18"><path d="M5 14l5-5 5 5-3 3H8l-3-3z"/></svg></button>
+      <button class="btn-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" width="18" height="18"><path d="M3 14l7-7a2 2 0 0 1 2.8 0l3.2 3.2a2 2 0 0 1 0 2.8L12 17H6l-3-3z"/></svg></button>
+      <button class="btn-icon" style="background:var(--ink);color:var(--paper)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" width="18" height="18"><circle cx="7" cy="7" r="3.2"/><rect x="10.5" y="10.5" width="6" height="6" rx="1"/></svg></button>
+    </div>
+  </div>
+</section>
+
+<!-- FORMS -->
+<section id="forms" class="sec">
+  <span class="eyebrow">Components — Forms</span>
+  <h2>Inputs sit on paper-2.</h2>
+
+  <div class="grid g-2">
+    <div class="demo">
+      <div class="demo-title"><h3>Text &amp; email</h3><code>&lt;Input /&gt;</code></div>
+      <input type="text" placeholder="Display name"/>
+      <input type="email" value="mira@uni.edu"/>
+      <input type="password" placeholder="••••••••" style="font-family:var(--mono)"/>
+    </div>
+    <div class="demo">
+      <div class="demo-title"><h3>Select &amp; textarea</h3><code>&lt;Select /&gt; &lt;Textarea /&gt;</code></div>
+      <select><option>Anthropic (Claude)</option><option>OpenAI</option></select>
+      <textarea rows="3" placeholder="Notes for students…"></textarea>
+    </div>
+    <div class="demo">
+      <div class="demo-title"><h3>Toggles</h3><code>&lt;Toggle /&gt;</code></div>
+      <div class="demo-row"><button class="toggle on" onclick="this.classList.toggle('on')"></button> <span>AI features</span></div>
+      <div class="demo-row"><button class="toggle" onclick="this.classList.toggle('on')"></button> <span>Share AI with students</span></div>
+    </div>
+    <div class="demo">
+      <div class="demo-title"><h3>Keyboard</h3><code>&lt;Kbd&gt;</code></div>
+      <div class="demo-row">
+        <span class="kbd">⌘</span><span class="kbd">K</span>
+        <span class="kbd">F</span>
+        <span class="kbd">Esc</span>
+        <span class="kbd">/</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PILLS / BADGES -->
+<section id="pills" class="sec">
+  <span class="eyebrow">Components — Pills &amp; Badges</span>
+  <h2>Quiet status, loud selection.</h2>
+  <div class="grid g-2">
+    <div class="demo">
+      <div class="demo-title"><h3>Pills (selectable)</h3><code>&lt;Pill active /&gt;</code></div>
+      <div class="demo-row">
+        <button class="pill active">Ruled</button>
+        <button class="pill">Grid 5mm</button>
+        <button class="pill">Dot</button>
+        <button class="pill">Plain</button>
+        <button class="pill">Cornell</button>
+      </div>
+    </div>
+    <div class="demo">
+      <div class="demo-title"><h3>Badges (status)</h3><code>&lt;Badge tone /&gt;</code></div>
+      <div class="demo-row">
+        <span class="badge ok">✓ Connected</span>
+        <span class="badge warn">● Over limit</span>
+        <span class="badge danger">! Key invalid</span>
+        <span class="badge info">Beta</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CARDS -->
+<section id="cards" class="sec">
+  <span class="eyebrow">Components — Cards &amp; Surfaces</span>
+  <h2>Four surfaces, one vocabulary.</h2>
+  <div class="grid g-4">
+    <div class="card"><b style="display:block;margin-bottom:6px">Card</b><span style="color:var(--ink-3);font-size:13px">Default UI container. 14px radius, 1px rule border.</span></div>
+    <div class="card-paper" style="padding:18px"><b style="display:block;margin-bottom:6px;font-family:var(--serif);font-size:18px">Paper card</b><span style="color:var(--ink-3);font-size:13px">Simulates a page. 6px radius, lifted shadow.</span></div>
+    <div class="sticky">sticky note<br/>for student tips</div>
+    <div class="card" style="background:var(--ink);color:var(--paper);border-color:var(--ink)"><b style="display:block;margin-bottom:6px">Inverted</b><span style="color:var(--ink-4);font-size:13px">For featured / premium plan cards.</span></div>
+  </div>
+</section>
+
+<!-- ICONS -->
+<section id="icons" class="sec">
+  <span class="eyebrow">Icons</span>
+  <h2>1.6px stroke, 20px viewBox.</h2>
+  <p class="lede">All icons are inline SVG, <code>currentColor</code>, round joins &amp; caps. Rendered at 18-22px most of the time.</p>
+  <div class="icons">
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l1.2-4 9.5-9.5a1.5 1.5 0 0 1 2.1 0l.7.7a1.5 1.5 0 0 1 0 2.1L7 15.8z"/></svg><span class="n">pen</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 14l5-5 5 5-3 3H8l-3-3z"/><path d="M4 18h6"/></svg><span class="n">highlight</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14l7-7a2 2 0 0 1 2.8 0l3.2 3.2a2 2 0 0 1 0 2.8L12 17H6l-3-3z"/></svg><span class="n">eraser</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7c0-2 3-3.5 6-3.5s6 1.5 6 3.5-3 3.5-6 3.5"/><circle cx="7.2" cy="15" r="1.2"/></svg><span class="n">lasso</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="3.2"/><rect x="10.5" y="10.5" width="6" height="6" rx="1"/></svg><span class="n">shapes</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h10M10 5v11M7.5 16h5"/></svg><span class="n">text</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="12" rx="1.5"/><circle cx="7.5" cy="8.5" r="1.3"/><path d="M4 14l4-4 3 3 3-3 2 2"/></svg><span class="n">image</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2"/><path d="M10 4v2M10 14v2M4 10h2M14 10h2"/></svg><span class="n">laser</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="10" r="2"/><circle cx="15" cy="5" r="2"/><circle cx="15" cy="15" r="2"/><path d="M6.8 9l6.4-3M6.8 11l6.4 3"/></svg><span class="n">share</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3l1.2 3.2L14 7.5 11.2 8.8 10 12 8.8 8.8 6 7.5l2.8-1.3z"/></svg><span class="n">sparkles</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.2"/><path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.2 5.2l1.4 1.4M13.4 13.4l1.4 1.4M5.2 14.8l1.4-1.4M13.4 6.6l1.4-1.4"/></svg><span class="n">gear</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h5a2 2 0 0 1 2 2v11a2 2 0 0 0-2-2H4z"/><path d="M16 4h-5a2 2 0 0 0-2 2v11a2 2 0 0 1 2-2h5z"/></svg><span class="n">book</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6"/><rect x="11" y="3" width="6" height="6"/><rect x="3" y="11" width="6" height="6"/><rect x="11" y="11" width="6" height="6"/></svg><span class="n">grid</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 5h12M4 9h12M4 13h12M4 17h12"/></svg><span class="n">ruled</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="5"/><path d="M13 13l4 4"/></svg><span class="n">search</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v10M5 10l5 5 5-5M4 17h12"/></svg><span class="n">download</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 4v12M4 10h12"/></svg><span class="n">plus</span></div>
+    <div class="icon-cell"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 5l10 10M15 5L5 15"/></svg><span class="n">close</span></div>
+  </div>
+</section>
+
+<!-- PAPER & PAGES -->
+<section id="paper" class="sec">
+  <span class="eyebrow">Paper &amp; pages</span>
+  <h2>Three page backgrounds — baked into tokens.</h2>
+  <p class="lede">Margin line is accent-2 at 55% opacity. Grid is 22px base × 110px major.</p>
+  <div class="grid g-3">
+    <div class="card" style="padding:10px"><div class="pt"></div><p style="margin:8px 4px 0;font-family:var(--mono);font-size:11.5px;color:var(--ink-3)">type="plain"</p></div>
+    <div class="card" style="padding:10px"><div class="pt ruled"></div><p style="margin:8px 4px 0;font-family:var(--mono);font-size:11.5px;color:var(--ink-3)">type="ruled"</p></div>
+    <div class="card" style="padding:10px"><div class="pt grid"></div><p style="margin:8px 4px 0;font-family:var(--mono);font-size:11.5px;color:var(--ink-3)">type="grid"</p></div>
+  </div>
+</section>
+
+<!-- MOTION -->
+<section id="motion" class="sec">
+  <span class="eyebrow">Motion</span>
+  <h2>Fast and quiet.</h2>
+  <div class="grid g-2">
+    <div class="card">
+      <div style="display:grid;grid-template-columns:120px 1fr;gap:10px;font-family:var(--mono);font-size:12.5px">
+        <span style="color:var(--ink-3)">xs</span><b>80ms</b>
+        <span style="color:var(--ink-3)">sm</span><b>120ms</b>
+        <span style="color:var(--ink-3)">md</span><b>180ms</b>
+        <span style="color:var(--ink-3)">lg</span><b>260ms</b>
+        <span style="color:var(--ink-3)">xl</span><b>400ms</b>
+      </div>
+    </div>
+    <div class="card">
+      <div style="display:grid;grid-template-columns:120px 1fr;gap:10px;font-family:var(--mono);font-size:12.5px">
+        <span style="color:var(--ink-3)">ease-out</span><b>cubic-bezier(0.2,0.8,0.2,1)</b>
+        <span style="color:var(--ink-3)">ease-in-out</span><b>cubic-bezier(0.4,0,0.2,1)</b>
+        <span style="color:var(--ink-3)">reduced</span><b>0ms (honor prefers-reduced-motion)</b>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- EXPORTED TOKENS -->
+<section id="tokens" class="sec">
+  <span class="eyebrow">For engineers</span>
+  <h2>Exported tokens.</h2>
+  <p class="lede">Drop into <code>app/globals.css</code>. Also available as a JSON (ask in #design).</p>
+  <pre class="code"><span class="c">/* globals.css — Slate v1 */</span>
+<span class="k">:root</span> {
+  <span class="c">/* color · surface */</span>
+  --bg: <span class="s">#efe8d9</span>;
+  --paper: <span class="s">#f8f4ec</span>;
+  --paper-2: <span class="s">#f3ecdc</span>;
+  --chrome: <span class="s">#fbf8f1</span>;
+  --chrome-2: <span class="s">#efe8d5</span>;
+  --chrome-b: <span class="s">#dfd4b5</span>;
+
+  <span class="c">/* color · ink */</span>
+  --ink: <span class="s">#1f1c15</span>;
+  --ink-2: <span class="s">#4a4436</span>;
+  --ink-3: <span class="s">#7a7360</span>;
+  --ink-4: <span class="s">#ada48c</span>;
+
+  <span class="c">/* color · accent + state */</span>
+  --accent: <span class="s">oklch(0.58 0.13 45)</span>;
+  --accent-2: <span class="s">oklch(0.72 0.10 45)</span>;
+  --accent-soft: <span class="s">oklch(0.92 0.04 45)</span>;
+  --ok: <span class="s">oklch(0.58 0.12 145)</span>;
+  --warn: <span class="s">oklch(0.72 0.13 85)</span>;
+  --danger: <span class="s">oklch(0.55 0.17 25)</span>;
+
+  <span class="c">/* type */</span>
+  --ui: <span class="s">"Inter", system-ui, sans-serif</span>;
+  --serif: <span class="s">"Instrument Serif", Georgia, serif</span>;
+  --mono: <span class="s">"JetBrains Mono", ui-monospace, monospace</span>;
+  --hand: <span class="s">"Caveat", cursive</span>;
+
+  <span class="c">/* radius */</span>
+  --r-sm: <span class="s">6px</span>; --r-md: <span class="s">10px</span>;
+  --r-lg: <span class="s">14px</span>; --r-xl: <span class="s">22px</span>;
+  --r-full: <span class="s">999px</span>;
+
+  <span class="c">/* space (4-based) */</span>
+  --space-1: <span class="s">4px</span>; --space-2: <span class="s">8px</span>;
+  --space-3: <span class="s">12px</span>; --space-4: <span class="s">16px</span>;
+  --space-5: <span class="s">20px</span>; --space-6: <span class="s">24px</span>;
+  --space-8: <span class="s">32px</span>; --space-10: <span class="s">40px</span>;
+  --space-12: <span class="s">48px</span>; --space-16: <span class="s">64px</span>;
+
+  <span class="c">/* shadow · warm, not grey */</span>
+  --shadow-1: <span class="s">0 1px 0 rgba(50,40,20,.04), 0 1px 2px rgba(50,40,20,.06)</span>;
+  --shadow-2: <span class="s">0 1px 0 rgba(50,40,20,.05), 0 6px 22px -8px rgba(50,40,20,.22)</span>;
+  --shadow-3: <span class="s">0 10px 40px -10px rgba(40,30,10,.25), 0 2px 8px rgba(40,30,10,.10)</span>;
+
+  <span class="c">/* motion */</span>
+  --d-xs: <span class="s">80ms</span>; --d-sm: <span class="s">120ms</span>;
+  --d-md: <span class="s">180ms</span>; --d-lg: <span class="s">260ms</span>;
+  --ease-out: <span class="s">cubic-bezier(0.2, 0.8, 0.2, 1)</span>;
+}</pre>
+</section>
+
+</div>
+</div>
+
+<footer style="padding:40px 28px;text-align:center;color:var(--ink-3);font-size:12.5px">
+  Slate Design System · v1.0 · <a href="landing.html" style="color:inherit">Landing</a> · <a href="Whiteboard.html" style="color:inherit">App</a> · <a href="settings.html" style="color:inherit">Settings</a>
+</footer>
+
+<script>
+(async () => {
+  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e){}
+  await new Promise(r => setTimeout(r, 500));
+  window.print();
+})();
+</script>
+
+</body></html>

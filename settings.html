@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Slate — Settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#efe8d9; --paper:#f8f4ec; --paper-2:#f3ecdc;
+  --ink:#1f1c15; --ink-2:#4a4436; --ink-3:#7a7360; --ink-4:#ada48c;
+  --rule:#d9cfb4; --rule-2:#e8dfc6;
+  --accent:oklch(0.58 0.13 45); --accent-soft:oklch(0.92 0.04 45);
+  --chrome:#fbf8f1; --chrome-b:#dfd4b5;
+  --ok:oklch(0.58 0.12 145); --danger:oklch(0.55 0.17 25);
+  --ui:"Inter",system-ui,sans-serif; --serif:"Instrument Serif",Georgia,serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace; --hand:"Caveat",cursive;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--ui);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.grain{position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background-image:radial-gradient(rgba(50,40,20,.045) 1px,transparent 1px),radial-gradient(rgba(50,40,20,.03) 1px,transparent 1px);
+  background-size:3px 3px,7px 7px;mix-blend-mode:multiply;opacity:.35}
+a{color:inherit;text-decoration:none}
+
+nav{display:flex;align-items:center;gap:22px;padding:18px 28px;max-width:1280px;margin:0 auto}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-size:24px}
+.logo-mark{width:26px;height:26px;border-radius:6px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-family:var(--serif);font-style:italic;font-size:16px;line-height:1}
+.nav-link{color:var(--ink-3);font-size:13px}
+.nav-link:hover{color:var(--ink)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;border:none}
+.btn-ink{background:var(--ink);color:var(--paper)}
+.btn-ghost{background:var(--paper);color:var(--ink);border:1px solid var(--chrome-b)}
+.btn-danger{background:transparent;color:var(--danger);border:1px solid color-mix(in oklch, var(--danger) 40%, transparent)}
+
+.app{max-width:1200px;margin:10px auto 60px;padding:0 28px;display:grid;grid-template-columns:240px 1fr;gap:36px}
+aside .crumb{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;color:var(--ink-3);font-size:13px;cursor:pointer}
+aside .crumb:hover{background:var(--paper)}
+aside .crumb.active{background:var(--ink);color:var(--paper)}
+aside .sec{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);padding:16px 12px 6px}
+aside svg{width:15px;height:15px;flex-shrink:0}
+
+h1{font-family:var(--serif);font-size:42px;line-height:1;letter-spacing:-.005em;margin:10px 0 6px;font-weight:400}
+.page-sub{color:var(--ink-3);font-size:14.5px;margin:0 0 28px}
+
+.card{background:var(--paper);border:1px solid var(--rule);border-radius:14px;margin-bottom:16px;overflow:hidden}
+.card-h{padding:18px 22px 14px;border-bottom:1px solid var(--rule-2)}
+.card-h h2{font-family:var(--serif);font-size:22px;margin:0;font-weight:400}
+.card-h p{margin:4px 0 0;color:var(--ink-3);font-size:13px}
+.card-b{padding:6px 22px 18px}
+
+.row{display:grid;grid-template-columns:240px 1fr;gap:20px;padding:14px 0;border-bottom:1px dashed var(--rule-2);align-items:flex-start}
+.row:last-child{border-bottom:none}
+.row .lbl{font-size:13.5px;color:var(--ink)}
+.row .lbl small{display:block;color:var(--ink-3);font-size:12px;margin-top:3px;font-weight:400;line-height:1.45}
+.row .ctrl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+input[type="text"], input[type="email"], input[type="password"], select, textarea{
+  font-family:var(--ui);font-size:13.5px;color:var(--ink);
+  background:var(--paper-2);border:1px solid var(--rule);border-radius:8px;
+  padding:9px 12px;outline:none;width:100%;max-width:420px;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--ink);background:#fff}
+.mono-input{font-family:var(--mono);font-size:12.5px}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);background-position:calc(100% - 16px) 14px,calc(100% - 11px) 14px;background-size:5px 5px;background-repeat:no-repeat;padding-right:30px}
+
+.toggle{width:38px;height:22px;border-radius:999px;border:none;position:relative;cursor:pointer;background:var(--chrome-b);padding:0;transition:background .15s;flex-shrink:0}
+.toggle.on{background:var(--accent)}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:999px;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.toggle.on::after{left:18px}
+
+.pill{padding:6px 12px;border-radius:999px;font-size:12px;border:1px solid var(--chrome-b);background:var(--paper-2);color:var(--ink-2);cursor:pointer}
+.pill.active{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+.kbd{font-family:var(--mono);font-size:11px;background:var(--paper-2);border:1px solid var(--rule);border-radius:4px;padding:1px 6px;color:var(--ink-2)}
+
+.avatar{width:72px;height:72px;border-radius:999px;background:linear-gradient(135deg,var(--accent),oklch(0.68 0.13 25));color:#fff;display:grid;place-items:center;font-family:var(--serif);font-size:30px;flex-shrink:0}
+
+.provider{display:flex;gap:10px;flex-wrap:wrap}
+.provider-card{flex:1;min-width:200px;border:1px solid var(--rule);border-radius:10px;padding:12px 14px;background:var(--paper-2);cursor:pointer;display:flex;flex-direction:column;gap:4px}
+.provider-card.active{border-color:var(--ink);background:var(--paper);box-shadow:0 0 0 2px var(--ink)}
+.provider-card .name{font-size:13.5px;font-weight:600}
+.provider-card .m{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+
+.badge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.badge.ok{background:color-mix(in oklch,var(--ok) 18%, transparent);color:var(--ok)}
+.badge.warn{background:#fff2b0;color:#7a5a10}
+
+.usage{height:8px;background:var(--paper-2);border-radius:999px;overflow:hidden;border:1px solid var(--rule);max-width:420px}
+.usage > div{height:100%;background:var(--accent);border-radius:999px}
+
+.danger-zone{border:1px dashed color-mix(in oklch,var(--danger) 50%, var(--rule))}
+.danger-zone .card-h h2{color:var(--danger)}
+
+.saved-pill{position:fixed;bottom:24px;right:24px;padding:10px 16px;background:var(--ink);color:var(--paper);border-radius:999px;font-size:12.5px;
+  box-shadow:0 10px 30px -10px rgba(0,0,0,.4);opacity:0;transform:translateY(10px);transition:all .2s;z-index:100;display:flex;align-items:center;gap:8px}
+.saved-pill.show{opacity:1;transform:translateY(0)}
+
+@media(max-width:800px){
+  .app{grid-template-columns:1fr}
+  aside{display:none}
+  .row{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="grain"></div>
+
+<nav>
+  <a href="landing.html" class="logo"><span class="logo-mark">S</span> Slate</a>
+  <div style="flex:1"></div>
+  <a href="Whiteboard.html" class="nav-link">Open app</a>
+  <a href="landing.html" class="nav-link">Help</a>
+  <span style="width:32px;height:32px;border-radius:999px;background:linear-gradient(135deg,var(--accent),oklch(0.68 0.13 25));color:#fff;display:grid;place-items:center;font-family:var(--serif);font-size:14px">M</span>
+</nav>
+
+<main class="app">
+<aside>
+  <div class="sec">Account</div>
+  <div class="crumb active"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="7" r="3"/><path d="M3 17c0-4 3.5-6 7-6s7 2 7 6"/></svg> Profile</div>
+  <div class="crumb"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="14" height="10" rx="1.5"/><path d="M3 9h14M6 13h3"/></svg> Billing & plan</div>
+  <div class="crumb"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2.5 2.5 2.5 11.5 0 14M10 3c-2.5 2.5-2.5 11.5 0 14"/></svg> Workspace</div>
+
+  <div class="sec">Experience</div>
+  <div class="crumb"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17l1.2-4 9.5-9.5a1.5 1.5 0 0 1 2.1 0l.7.7a1.5 1.5 0 0 1 0 2.1L7 15.8z"/></svg> Canvas defaults</div>
+  <div class="crumb"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3l1.2 3.2L14 7.5 11.2 8.8 10 12 8.8 8.8 6 7.5z"/></svg> AI &amp; API keys</div>
+  <div class="crumb"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="5" cy="10" r="2"/><circle cx="15" cy="5" r="2"/><circle cx="15" cy="15" r="2"/><path d="M6.8 9l6.4-3M6.8 11l6.4 3"/></svg> Sharing defaults</div>
+  <div class="crumb"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6h14M3 10h14M3 14h14"/></svg> Keyboard shortcuts</div>
+
+  <div class="sec">Integrations</div>
+  <div class="crumb"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 12l4-4M7 7L5 9a3 3 0 0 0 4.2 4.2L10 13M13 13l2-2a3 3 0 0 0-4.2-4.2L10 7"/></svg> Connected apps</div>
+  <div class="crumb"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="14" height="12" rx="1.5"/></svg> Export & backup</div>
+
+  <div class="sec" style="margin-top:12px;color:color-mix(in oklch,var(--danger) 50%, var(--ink-4))">Danger</div>
+  <div class="crumb" style="color:var(--danger)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h12M8 6V4h4v2M6 6l1 11h6l1-11"/></svg> Delete account</div>
+</aside>
+
+<div>
+<h1>Settings</h1>
+<p class="page-sub">Signed in as <b style="color:var(--ink)">mira@uni.edu</b> · Teacher plan · Updated 2m ago</p>
+
+<!-- Profile -->
+<div class="card">
+  <div class="card-h">
+    <h2>Profile</h2>
+    <p>How you appear to students in shared notebooks.</p>
+  </div>
+  <div class="card-b">
+    <div class="row">
+      <div class="lbl">Avatar<small>Students see this in the collaborator strip.</small></div>
+      <div class="ctrl">
+        <div class="avatar">M</div>
+        <button class="btn btn-ghost">Upload image</button>
+        <button class="btn btn-ghost">Remove</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="lbl">Display name</div>
+      <div class="ctrl"><input type="text" value="Dr. Mira Alinsky"></div>
+    </div>
+    <div class="row">
+      <div class="lbl">Role<small>Teachers can publish notebooks to students.</small></div>
+      <div class="ctrl">
+        <button class="pill active">Teacher</button>
+        <button class="pill">Student</button>
+        <button class="pill">Observer</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="lbl">Email</div>
+      <div class="ctrl"><input type="email" value="mira@uni.edu"> <span class="badge ok">✓ verified</span></div>
+    </div>
+    <div class="row">
+      <div class="lbl">Timezone</div>
+      <div class="ctrl">
+        <select><option>Asia/Lagos — WAT</option><option>America/New_York — ET</option><option>Europe/Zürich</option></select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Canvas defaults -->
+<div class="card">
+  <div class="card-h">
+    <h2>Canvas defaults</h2>
+    <p>Applied to every new page. You can always override per-page.</p>
+  </div>
+  <div class="card-b">
+    <div class="row">
+      <div class="lbl">Default page background</div>
+      <div class="ctrl">
+        <button class="pill">Plain</button>
+        <button class="pill active">Ruled</button>
+        <button class="pill">Grid 5mm</button>
+        <button class="pill">Dot</button>
+        <button class="pill">Cornell</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="lbl">Paper size</div>
+      <div class="ctrl">
+        <button class="pill active">16:10</button>
+        <button class="pill">A4</button>
+        <button class="pill">Letter</button>
+        <button class="pill">Infinite</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="lbl">Theme</div>
+      <div class="ctrl">
+        <button class="pill active">Warm paper</button>
+        <button class="pill">Clean light</button>
+        <button class="pill">Night ink</button>
+        <button class="pill">Match system</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="lbl">Pressure sensitivity<small>Ignored on non-stylus devices.</small></div>
+      <div class="ctrl"><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+    </div>
+    <div class="row">
+      <div class="lbl">Palm rejection</div>
+      <div class="ctrl"><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+    </div>
+    <div class="row">
+      <div class="lbl">Shape recognition<small>Draw a wobbly circle — Slate cleans it up.</small></div>
+      <div class="ctrl"><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+    </div>
+    <div class="row">
+      <div class="lbl">Show paper grain</div>
+      <div class="ctrl"><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+    </div>
+  </div>
+</div>
+
+<!-- AI + BYOK -->
+<div class="card">
+  <div class="card-h">
+    <h2>AI &amp; API keys</h2>
+    <p>Slate never stores your conversations. Keys are encrypted at rest and can be revoked any time.</p>
+  </div>
+  <div class="card-b">
+    <div class="row">
+      <div class="lbl">AI features<small>Summaries, quiz generation, handwriting → text, “explain this” on selection.</small></div>
+      <div class="ctrl"><button class="toggle on" onclick="this.classList.toggle('on')"></button> <span style="color:var(--ink-3);font-size:12.5px">All AI off cascades to the editor.</span></div>
+    </div>
+
+    <div class="row">
+      <div class="lbl">Mode
+        <small>BYOK = bring your own key. No usage markup, no rate limits from us.</small>
+      </div>
+      <div class="ctrl" style="flex-direction:column;align-items:stretch;gap:10px;width:100%">
+        <div class="provider">
+          <div class="provider-card active">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="name">Bring your own key</span>
+              <span class="badge ok">recommended</span>
+            </div>
+            <span class="m">Your key · your quota · direct to provider</span>
+          </div>
+          <div class="provider-card">
+            <span class="name">Slate-managed</span>
+            <span class="m">Included in Teacher plan · 500 credits / mo</span>
+          </div>
+          <div class="provider-card">
+            <span class="name">Self-hosted endpoint</span>
+            <span class="m">Point at your own Ollama / LM Studio / vLLM</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="lbl">Provider</div>
+      <div class="ctrl">
+        <select style="max-width:260px">
+          <option>Anthropic (Claude)</option>
+          <option>OpenAI</option>
+          <option>Google (Gemini)</option>
+          <option>Groq</option>
+          <option>Mistral</option>
+          <option>Custom OpenAI-compatible…</option>
+        </select>
+        <select style="max-width:220px">
+          <option>claude-sonnet-4.5</option>
+          <option>claude-haiku-4.5</option>
+          <option>claude-opus-4</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="lbl">API key
+        <small>Never leaves your device unencrypted. Stored with libsodium + your workspace key.</small>
+      </div>
+      <div class="ctrl" style="flex-direction:column;align-items:stretch;gap:8px;width:100%">
+        <div style="display:flex;gap:8px;align-items:center;width:100%;max-width:560px">
+          <input type="password" class="mono-input" value="sk-ant-api03-••••••••••••••••••••••••••••••••••••••••••u9QA" style="max-width:none;flex:1">
+          <button class="btn btn-ghost" onclick="
+            const i=this.previousElementSibling;
+            i.type = i.type==='password' ? 'text' : 'password';
+            this.textContent = i.type==='password' ? 'Show' : 'Hide';
+          ">Show</button>
+          <button class="btn btn-ghost">Replace</button>
+        </div>
+        <div style="display:flex;gap:14px;align-items:center;color:var(--ink-3);font-size:12px">
+          <span class="badge ok">● Connected</span>
+          <span>Last verified 2m ago · anthropic.com</span>
+          <a href="#" style="color:var(--accent);font-weight:500;margin-left:auto">Test connection →</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="lbl">Custom endpoint<small>Leave blank to use the provider default.</small></div>
+      <div class="ctrl"><input type="text" class="mono-input" placeholder="https://api.anthropic.com/v1"></div>
+    </div>
+
+    <div class="row">
+      <div class="lbl">Monthly spend cap<small>Slate will pause AI features if your usage would exceed this.</small></div>
+      <div class="ctrl" style="flex-direction:column;align-items:stretch;gap:8px;width:100%">
+        <div style="display:flex;gap:10px;align-items:center">
+          <span style="font-family:var(--mono);color:var(--ink-3)">$</span>
+          <input type="text" value="25.00" style="max-width:120px">
+          <span style="color:var(--ink-3);font-size:12.5px">/ month</span>
+        </div>
+        <div class="usage"><div style="width:48%"></div></div>
+        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--ink-3)">
+          <span>$11.94 used this month</span>
+          <span>$13.06 remaining</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="lbl">Share AI with students<small>Off: your key is never used for student requests — they must provide their own.</small></div>
+      <div class="ctrl"><button class="toggle" onclick="this.classList.toggle('on')"></button></div>
+    </div>
+
+    <div class="row">
+      <div class="lbl">Opt-in for training<small>When off, providers are sent a no-training header where supported.</small></div>
+      <div class="ctrl"><button class="toggle" onclick="this.classList.toggle('on')"></button></div>
+    </div>
+
+    <div class="row">
+      <div class="lbl">Allowed features<small>Fine-grained control over what the AI can do.</small></div>
+      <div class="ctrl" style="flex-direction:column;align-items:stretch;gap:6px">
+        <label style="display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2)"><button class="toggle on" onclick="this.classList.toggle('on')"></button> Page summary</label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2)"><button class="toggle on" onclick="this.classList.toggle('on')"></button> Quiz generation from a page</label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2)"><button class="toggle on" onclick="this.classList.toggle('on')"></button> Handwriting → text conversion</label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2)"><button class="toggle on" onclick="this.classList.toggle('on')"></button> "Explain this" on selection</label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2)"><button class="toggle" onclick="this.classList.toggle('on')"></button> Auto-suggest related pages</label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Sharing -->
+<div class="card">
+  <div class="card-h">
+    <h2>Sharing defaults</h2>
+    <p>What happens when you share a new notebook.</p>
+  </div>
+  <div class="card-b">
+    <div class="row">
+      <div class="lbl">Default access mode</div>
+      <div class="ctrl" style="flex-direction:column;align-items:stretch;gap:6px">
+        <label style="display:flex;align-items:center;gap:10px;color:var(--ink-2)"><input type="radio" name="acc"/> Read-only</label>
+        <label style="display:flex;align-items:center;gap:10px;color:var(--ink-2)"><input type="radio" name="acc" checked/> Read + personal annotations <span style="color:var(--ink-3);font-size:12px">— students get a private copy</span></label>
+        <label style="display:flex;align-items:center;gap:10px;color:var(--ink-2)"><input type="radio" name="acc"/> Live collaboration</label>
+      </div>
+    </div>
+    <div class="row">
+      <div class="lbl">Require sign-in<small>Viewers must be on slate.so.</small></div>
+      <div class="ctrl"><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+    </div>
+    <div class="row">
+      <div class="lbl">Restrict to domain</div>
+      <div class="ctrl"><input type="text" value="@uni.edu" class="mono-input" style="max-width:260px"></div>
+    </div>
+    <div class="row">
+      <div class="lbl">Watermark student PDF exports</div>
+      <div class="ctrl"><button class="toggle" onclick="this.classList.toggle('on')"></button></div>
+    </div>
+  </div>
+</div>
+
+<!-- Keyboard -->
+<div class="card">
+  <div class="card-h">
+    <h2>Keyboard shortcuts</h2>
+    <p>Customize later — for now, here's what's wired up.</p>
+  </div>
+  <div class="card-b">
+    <div class="row"><div class="lbl">Pen / Highlighter / Eraser</div><div class="ctrl"><span class="kbd">P</span> <span class="kbd">H</span> <span class="kbd">E</span></div></div>
+    <div class="row"><div class="lbl">Lasso · Shapes · Text</div><div class="ctrl"><span class="kbd">S</span> <span class="kbd">R</span> <span class="kbd">T</span></div></div>
+    <div class="row"><div class="lbl">Laser pointer · Ruler</div><div class="ctrl"><span class="kbd">X</span> <span class="kbd">L</span></div></div>
+    <div class="row"><div class="lbl">Focus mode</div><div class="ctrl"><span class="kbd">F</span> <span style="color:var(--ink-3);font-size:12px">· Esc to exit</span></div></div>
+    <div class="row"><div class="lbl">Insert menu</div><div class="ctrl"><span class="kbd">/</span></div></div>
+    <div class="row"><div class="lbl">Quick search</div><div class="ctrl"><span class="kbd">⌘</span> <span class="kbd">K</span></div></div>
+  </div>
+</div>
+
+<!-- Export -->
+<div class="card">
+  <div class="card-h">
+    <h2>Export &amp; backup</h2>
+    <p>Your notebooks, your files. Always.</p>
+  </div>
+  <div class="card-b">
+    <div class="row">
+      <div class="lbl">Auto-backup to cloud storage</div>
+      <div class="ctrl">
+        <button class="pill">Google Drive</button>
+        <button class="pill active">Dropbox</button>
+        <button class="pill">iCloud</button>
+        <button class="pill">Local folder</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="lbl">Export everything now<small>Ink strokes as SVG · media as original files · metadata as JSON.</small></div>
+      <div class="ctrl"><button class="btn btn-ghost">Download .slate archive</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- Danger -->
+<div class="card danger-zone">
+  <div class="card-h">
+    <h2>Danger zone</h2>
+    <p>These actions can't be undone.</p>
+  </div>
+  <div class="card-b">
+    <div class="row">
+      <div class="lbl">Revoke all share links<small>Invalidates every student URL. Students will need fresh invites.</small></div>
+      <div class="ctrl"><button class="btn btn-danger">Revoke all</button></div>
+    </div>
+    <div class="row">
+      <div class="lbl">Delete account<small>Removes all your notebooks after a 30-day grace period.</small></div>
+      <div class="ctrl"><button class="btn btn-danger">Delete account</button></div>
+    </div>
+  </div>
+</div>
+
+<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+  <button class="btn btn-ghost">Discard changes</button>
+  <button class="btn btn-ink" onclick="document.getElementById('saved').classList.add('show');setTimeout(()=>document.getElementById('saved').classList.remove('show'),1600)">Save all changes</button>
+</div>
+
+</div>
+</main>
+
+<div class="saved-pill" id="saved">✓ Settings saved</div>
+
+</body></html>

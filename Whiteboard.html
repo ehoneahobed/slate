@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Slate — a whiteboard for teaching</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@400;600;700&family=Kalam:wght@400;700&display=swap" rel="stylesheet" />
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<style>
+  :root{
+    /* warm paper — default */
+    --bg:       #efe8d9;
+    --paper:    #f8f4ec;
+    --paper-2:  #f3ecdc;
+    --ink:      #1f1c15;
+    --ink-2:    #4a4436;
+    --ink-3:    #7a7360;
+    --ink-4:    #ada48c;
+    --rule:     #d9cfb4;
+    --rule-2:   #e8dfc6;
+    --accent:   oklch(0.58 0.13 45);
+    --accent-2: oklch(0.72 0.10 45);
+    --accent-soft: oklch(0.92 0.04 45);
+    --highlight:oklch(0.92 0.14 95 / 0.55);
+    --danger:   oklch(0.55 0.17 25);
+    --ok:       oklch(0.58 0.12 145);
+    --chrome:   #fbf8f1;
+    --chrome-2: #efe8d5;
+    --chrome-b: #dfd4b5;
+    --shadow-1: 0 1px 0 rgba(50,40,20,.04), 0 1px 2px rgba(50,40,20,.06);
+    --shadow-2: 0 1px 0 rgba(50,40,20,.05), 0 6px 22px -8px rgba(50,40,20,.22);
+    --shadow-3: 0 10px 40px -10px rgba(40,30,10,.25), 0 2px 8px rgba(40,30,10,.10);
+    --radius: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 22px;
+    --ui: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --serif: "Instrument Serif", Georgia, serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    --hand: "Caveat", "Kalam", cursive;
+  }
+  [data-theme="clean"]{
+    --bg:#eef0f3; --paper:#ffffff; --paper-2:#f7f8fa;
+    --ink:#0f1318; --ink-2:#3a4250; --ink-3:#6b7280; --ink-4:#aab2bd;
+    --rule:#e4e7eb; --rule-2:#eef1f4;
+    --chrome:#ffffff; --chrome-2:#f4f6f8; --chrome-b:#e3e7ec;
+    --accent: oklch(0.55 0.14 255); --accent-2: oklch(0.70 0.10 255); --accent-soft: oklch(0.94 0.04 255);
+  }
+  [data-theme="dark"]{
+    --bg:#17161a; --paper:#1e1d21; --paper-2:#242328;
+    --ink:#ece9e2; --ink-2:#bcb8ad; --ink-3:#827d70; --ink-4:#55504a;
+    --rule:#33313a; --rule-2:#2a292f;
+    --chrome:#202024; --chrome-2:#2a2830; --chrome-b:#3a3640;
+    --accent: oklch(0.78 0.12 45); --accent-2: oklch(0.68 0.11 45); --accent-soft: oklch(0.32 0.06 45);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family: var(--ui);
+    color: var(--ink);
+    background: var(--bg);
+    font-size: 14px;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+    height:100vh;
+  }
+  /* subtle paper grain across app */
+  .app-grain{
+    position:fixed; inset:0; pointer-events:none; z-index: 9999;
+    background-image:
+      radial-gradient(rgba(50,40,20,.045) 1px, transparent 1px),
+      radial-gradient(rgba(50,40,20,.03) 1px, transparent 1px);
+    background-size: 3px 3px, 7px 7px;
+    background-position: 0 0, 1px 2px;
+    mix-blend-mode: multiply;
+    opacity:.35;
+  }
+  [data-theme="clean"] .app-grain{opacity:0}
+  [data-theme="dark"] .app-grain{mix-blend-mode: screen; opacity:.08}
+  button{font:inherit;color:inherit}
+  #root{height:100vh;}
+</style>
+
+<!-- tweakable defaults (host writes here) -->
+<script>
+  window.TWEAKS = /*EDITMODE-BEGIN*/{
+    "theme": "paper",
+    "spineStyle": "stacked",
+    "density": "cozy",
+    "aiEnabled": true,
+    "showGrain": true,
+    "handwritingFont": "Caveat"
+  }/*EDITMODE-END*/;
+</script>
+</head>
+<body>
+<div id="root"></div>
+<div class="app-grain" id="grain"></div>
+
+<script type="text/babel" data-presets="react" src="src/icons.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/data.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/drawing.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/pageRenderers.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/spine.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/toolbar.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/inspector.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/modals.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/tweaks.jsx"></script>
+<script type="text/babel" data-presets="react" src="src/app.jsx"></script>
+</body>
+</html>
