@@ -25,4 +25,5 @@ apps/web/next-env.d.ts
 # Tooling
 .idea/
 .vscode/
+.claude/
 *.pem
