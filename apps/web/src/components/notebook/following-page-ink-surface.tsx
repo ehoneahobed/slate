@@ -29,6 +29,7 @@ import {
   type PageBlock,
   type PageBlockRoughShape,
   type PageRoughShapeKind,
+  type PageStickyTint,
 } from "@/lib/page-blocks/types";
 import { notebookTextContentInsetWorld } from "@/lib/page-blocks/text-typography";
 import type { PageBlocksChangeOpts } from "@/components/page-content/page-blocks-layer";
@@ -53,6 +54,16 @@ export type FollowingPageWriteApi = {
   consumeKeydown: (e: KeyboardEvent) => boolean;
   undo: () => void;
   redo: () => void;
+  /** Insert palette — same layout as the primary page editor. */
+  addTextBlock: () => void;
+  addYoutubeBlock: (videoId: string) => void;
+  addImageBlock: (src: string) => void;
+  addStickyBlock: (tint: PageStickyTint) => void;
+  addWebEmbedBlock: (url: string, title?: string) => void;
+  addFileCardBlock: (url: string, label: string) => void;
+  addMathBlock: (latex: string, opts?: { display?: boolean }) => void;
+  addCodeBlock: (code: string, opts?: { filename?: string }) => void;
+  beginRoughShapeDraw: (kind: PageRoughShapeKind) => void;
 };
 
 type MovePanProps = { onPanDelta: (dx: number, dy: number) => void };
@@ -107,7 +118,8 @@ export type FollowingPageInkSurfaceProps = {
   title: string;
   sectionBreak: boolean;
   sectionTitle: string;
-  initialBackground: string;
+  /** Ruled / grid / … — updates when the parent refreshes or edits meta for this sheet. */
+  sheetBackground: string;
   initialStrokes: InkStroke[];
   initialBlocks: PageBlock[];
   pageSize: PageSizeId;
@@ -122,6 +134,7 @@ export type FollowingPageInkSurfaceProps = {
   onFocusWritingSurface: (pageId: string) => void;
   registerApi: (pageId: string, api: FollowingPageWriteApi) => void;
   unregisterApi: (pageId: string) => void;
+  setShapeDrawKind: (kind: PageRoughShapeKind) => void;
 };
 
 export function FollowingPageInkSurface({
@@ -130,7 +143,7 @@ export function FollowingPageInkSurface({
   title,
   sectionBreak,
   sectionTitle,
-  initialBackground,
+  sheetBackground,
   initialStrokes,
   initialBlocks,
   pageSize,
@@ -144,13 +157,13 @@ export function FollowingPageInkSurface({
   onFocusWritingSurface,
   registerApi,
   unregisterApi,
+  setShapeDrawKind,
 }: FollowingPageInkSurfaceProps) {
     const router = useRouter();
     const uiTheme = useUiTheme(ssrUiTheme);
     const [pending, start] = useTransition();
     const [strokes, setStrokes] = useState(initialStrokes);
     const [blocks, setBlocks] = useState(initialBlocks);
-    const [background] = useState(initialBackground);
     const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
     const [pendingTextEditId, setPendingTextEditId] = useState<string | null>(null);
     const [, setEditingTextBlockId] = useState<string | null>(null);
@@ -305,6 +318,218 @@ export function FollowingPageInkSurface({
       syncSelectBlockId(dup.id);
     }, [selectedBlockId, chromeTool, blocks, applyBlocks, syncSelectBlockId]);
 
+    const insertAddTextBlock = useCallback(() => {
+      const id = crypto.randomUUID();
+      const n = blocks.length;
+      const aspect = pageLayoutAspectRatio(pageSize);
+      const RIGHT = 0.055;
+      const leftPad =
+        sheetBackground === "ruled" || sheetBackground === "cornell" ? 0.1 : sheetBackground === "grid" ? 0.07 : 0.05;
+      const x = Math.min(1 - RIGHT - 0.28, leftPad + (n % 5) * 0.035);
+      const w = Math.min(0.94, 1 - x - RIGHT);
+      const h = 0.12 * aspect;
+      const y0 = Math.min(aspect - h, (0.1 + (n % 6) * 0.05) * aspect);
+      const next: PageBlock[] = [
+        ...blocks,
+        {
+          kind: "text",
+          id,
+          x,
+          y: y0,
+          w,
+          h,
+          text: "Notes…",
+        },
+      ];
+      applyBlocks(next, { recordHistory: true });
+      setChromeToolAndClearLaser("select");
+      syncSelectBlockId(id);
+      setPendingTextEditId(id);
+    }, [blocks, applyBlocks, setChromeToolAndClearLaser, sheetBackground, pageSize, syncSelectBlockId]);
+
+    const insertAddYoutubeBlock = useCallback(
+      (videoId: string) => {
+        const id = crypto.randomUUID();
+        const n = blocks.length;
+        const aspect = pageLayoutAspectRatio(pageSize);
+        const yLeg = Math.min(0.5, 0.12 + (n % 5) * 0.04);
+        const next: PageBlock[] = [
+          ...blocks,
+          {
+            kind: "youtube",
+            id,
+            x: Math.min(0.45, 0.1 + (n % 4) * 0.04),
+            y: yLeg * aspect,
+            w: 0.48,
+            h: 0.36 * aspect,
+            videoId,
+          },
+        ];
+        applyBlocks(next, { recordHistory: true });
+        setChromeToolAndClearLaser("select");
+        syncSelectBlockId(id);
+      },
+      [blocks, applyBlocks, setChromeToolAndClearLaser, pageSize, syncSelectBlockId],
+    );
+
+    const insertAddImageBlock = useCallback(
+      (src: string) => {
+        const id = crypto.randomUUID();
+        const n = blocks.length;
+        const aspect = pageLayoutAspectRatio(pageSize);
+        const yLeg = Math.min(0.65, 0.1 + (n % 5) * 0.05);
+        const next: PageBlock[] = [
+          ...blocks,
+          {
+            kind: "image",
+            id,
+            x: Math.min(0.5, 0.08 + (n % 4) * 0.05),
+            y: yLeg * aspect,
+            w: 0.4,
+            h: 0.28 * aspect,
+            src,
+          },
+        ];
+        applyBlocks(next, { recordHistory: true });
+        setChromeToolAndClearLaser("select");
+        syncSelectBlockId(id);
+      },
+      [blocks, applyBlocks, setChromeToolAndClearLaser, pageSize, syncSelectBlockId],
+    );
+
+    const beginRoughShapeDraw = useCallback(
+      (kind: PageRoughShapeKind) => {
+        setShapeDrawKind(kind);
+        setChromeToolAndClearLaser("shapes");
+      },
+      [setShapeDrawKind, setChromeToolAndClearLaser],
+    );
+
+    const insertAddStickyBlock = useCallback(
+      (tint: PageStickyTint) => {
+        const id = crypto.randomUUID();
+        const n = blocks.length;
+        const aspect = pageLayoutAspectRatio(pageSize);
+        const w = 0.26;
+        const h = Math.min(0.28 * aspect, aspect * 0.45);
+        const x = Math.min(1 - w - 0.04, 0.06 + (n % 7) * 0.028);
+        const y = Math.min(PAGE_BLOCK_WORLD_UY_CEILING - h, (0.06 + (n % 6) * 0.05) * aspect);
+        const next: PageBlock[] = [
+          ...blocks,
+          { kind: "sticky", id, x, y, w, h, text: "", tint },
+        ];
+        applyBlocks(next, { recordHistory: true });
+        setChromeToolAndClearLaser("select");
+        syncSelectBlockId(id);
+      },
+      [blocks, applyBlocks, setChromeToolAndClearLaser, pageSize, syncSelectBlockId],
+    );
+
+    const insertAddWebEmbedBlock = useCallback(
+      (url: string, title?: string) => {
+        const id = crypto.randomUUID();
+        const n = blocks.length;
+        const aspect = pageLayoutAspectRatio(pageSize);
+        const yLeg = Math.min(0.42, 0.1 + (n % 4) * 0.05);
+        const next: PageBlock[] = [
+          ...blocks,
+          {
+            kind: "web_embed",
+            id,
+            x: Math.min(0.38, 0.06 + (n % 3) * 0.04),
+            y: yLeg * aspect,
+            w: 0.52,
+            h: 0.42 * aspect,
+            url,
+            ...(title ? { title } : {}),
+          },
+        ];
+        applyBlocks(next, { recordHistory: true });
+        setChromeToolAndClearLaser("select");
+        syncSelectBlockId(id);
+      },
+      [blocks, applyBlocks, setChromeToolAndClearLaser, pageSize, syncSelectBlockId],
+    );
+
+    const insertAddMathBlock = useCallback(
+      (latex: string, opts?: { display?: boolean }) => {
+        const id = crypto.randomUUID();
+        const n = blocks.length;
+        const aspect = pageLayoutAspectRatio(pageSize);
+        const yLeg = Math.min(0.55, 0.12 + (n % 5) * 0.04);
+        const display = opts?.display !== false;
+        const next: PageBlock[] = [
+          ...blocks,
+          {
+            kind: "math",
+            id,
+            x: Math.min(0.52, 0.08 + (n % 4) * 0.04),
+            y: yLeg * aspect,
+            w: 0.44,
+            h: 0.16 * aspect,
+            latex,
+            display,
+          },
+        ];
+        applyBlocks(next, { recordHistory: true });
+        setChromeToolAndClearLaser("select");
+        syncSelectBlockId(id);
+      },
+      [blocks, applyBlocks, setChromeToolAndClearLaser, pageSize, syncSelectBlockId],
+    );
+
+    const insertAddCodeBlock = useCallback(
+      (code: string, opts?: { filename?: string }) => {
+        const id = crypto.randomUUID();
+        const n = blocks.length;
+        const aspect = pageLayoutAspectRatio(pageSize);
+        const yLeg = Math.min(0.62, 0.1 + (n % 5) * 0.045);
+        const next: PageBlock[] = [
+          ...blocks,
+          {
+            kind: "code",
+            id,
+            x: Math.min(0.48, 0.06 + (n % 3) * 0.05),
+            y: yLeg * aspect,
+            w: 0.46,
+            h: 0.22 * aspect,
+            code,
+            ...(opts?.filename?.trim() ? { filename: opts.filename.trim().slice(0, 120) } : {}),
+          },
+        ];
+        applyBlocks(next, { recordHistory: true });
+        setChromeToolAndClearLaser("select");
+        syncSelectBlockId(id);
+      },
+      [blocks, applyBlocks, setChromeToolAndClearLaser, pageSize, syncSelectBlockId],
+    );
+
+    const insertAddFileCardBlock = useCallback(
+      (url: string, label: string) => {
+        const id = crypto.randomUUID();
+        const n = blocks.length;
+        const aspect = pageLayoutAspectRatio(pageSize);
+        const yLeg = Math.min(0.72, 0.08 + (n % 5) * 0.045);
+        const next: PageBlock[] = [
+          ...blocks,
+          {
+            kind: "file_card",
+            id,
+            x: Math.min(0.55, 0.06 + (n % 4) * 0.04),
+            y: yLeg * aspect,
+            w: 0.36,
+            h: 0.14 * aspect,
+            url,
+            label,
+          },
+        ];
+        applyBlocks(next, { recordHistory: true });
+        setChromeToolAndClearLaser("select");
+        syncSelectBlockId(id);
+      },
+      [blocks, applyBlocks, setChromeToolAndClearLaser, pageSize, syncSelectBlockId],
+    );
+
     const consumeKeydown = useCallback(
       (e: KeyboardEvent) => {
         if (readOnly) return false;
@@ -358,10 +583,33 @@ export function FollowingPageInkSurface({
       consumeKeydown,
       undo: undoLocal,
       redo: redoLocal,
+      addTextBlock: insertAddTextBlock,
+      addYoutubeBlock: insertAddYoutubeBlock,
+      addImageBlock: insertAddImageBlock,
+      addStickyBlock: insertAddStickyBlock,
+      addWebEmbedBlock: insertAddWebEmbedBlock,
+      addFileCardBlock: insertAddFileCardBlock,
+      addMathBlock: insertAddMathBlock,
+      addCodeBlock: insertAddCodeBlock,
+      beginRoughShapeDraw,
     });
 
     useLayoutEffect(() => {
-      apiImpl.current = { blur, consumeKeydown, undo: undoLocal, redo: redoLocal };
+      apiImpl.current = {
+        blur,
+        consumeKeydown,
+        undo: undoLocal,
+        redo: redoLocal,
+        addTextBlock: insertAddTextBlock,
+        addYoutubeBlock: insertAddYoutubeBlock,
+        addImageBlock: insertAddImageBlock,
+        addStickyBlock: insertAddStickyBlock,
+        addWebEmbedBlock: insertAddWebEmbedBlock,
+        addFileCardBlock: insertAddFileCardBlock,
+        addMathBlock: insertAddMathBlock,
+        addCodeBlock: insertAddCodeBlock,
+        beginRoughShapeDraw,
+      };
     });
 
     useEffect(() => {
@@ -370,6 +618,15 @@ export function FollowingPageInkSurface({
         consumeKeydown: (ev) => apiImpl.current.consumeKeydown(ev),
         undo: () => apiImpl.current.undo(),
         redo: () => apiImpl.current.redo(),
+        addTextBlock: () => apiImpl.current.addTextBlock(),
+        addYoutubeBlock: (vid) => apiImpl.current.addYoutubeBlock(vid),
+        addImageBlock: (src) => apiImpl.current.addImageBlock(src),
+        addStickyBlock: (tint) => apiImpl.current.addStickyBlock(tint),
+        addWebEmbedBlock: (url, title) => apiImpl.current.addWebEmbedBlock(url, title),
+        addFileCardBlock: (url, label) => apiImpl.current.addFileCardBlock(url, label),
+        addMathBlock: (latex, opts) => apiImpl.current.addMathBlock(latex, opts),
+        addCodeBlock: (code, opts) => apiImpl.current.addCodeBlock(code, opts),
+        beginRoughShapeDraw: (kind) => apiImpl.current.beginRoughShapeDraw(kind),
       };
       registerApi(pageId, api);
       return () => unregisterApi(pageId);
@@ -411,7 +668,7 @@ export function FollowingPageInkSurface({
         const ir = ink?.getBoundingClientRect();
         const aspect = ir && ir.width > 0 ? ir.height / ir.width : pageLayoutAspectRatio(pageSize);
         const sheetW = ir && ir.width > 0 ? ir.width : 0;
-        const { dnx, duy } = sheetW > 0 ? notebookTextContentInsetWorld(background, sheetW) : { dnx: 0, duy: 0 };
+        const { dnx, duy } = sheetW > 0 ? notebookTextContentInsetWorld(sheetBackground, sheetW) : { dnx: 0, duy: 0 };
         const wDefault = source === "text-tool" ? 0.32 : 0.42;
         const w = Math.min(0.94, Math.max(0.12, wDefault));
         const x = Math.min(1 - w, Math.max(0, nx - dnx));
@@ -435,7 +692,7 @@ export function FollowingPageInkSurface({
         syncSelectBlockId(id);
         setPendingTextEditId(id);
       },
-      [blocks, applyBlocks, setChromeToolAndClearLaser, background, pageSize, syncSelectBlockId],
+      [blocks, applyBlocks, setChromeToolAndClearLaser, sheetBackground, pageSize, syncSelectBlockId],
     );
 
     const commitShapeFromDrag = useCallback(
@@ -481,7 +738,7 @@ export function FollowingPageInkSurface({
 
     const inkLayers = (
       <>
-        <PageBackground type={background} />
+        <PageBackground type={sheetBackground} />
         <PageBlocksLayer
           blocks={blocks}
           onBlocksChange={applyBlocks}
@@ -492,7 +749,7 @@ export function FollowingPageInkSurface({
           pendingTextEditId={pendingTextEditId}
           onPendingTextEditConsumed={clearPendingTextEdit}
           onRequestTextAt={readOnly ? undefined : placeTextBlockAt}
-          pageBackgroundType={background}
+          pageBackgroundType={sheetBackground}
           layoutCoordSpace="world-v2"
           onEditingTextIdChange={setEditingTextBlockId}
           onShapeDrawCommit={readOnly ? undefined : commitShapeFromDrag}

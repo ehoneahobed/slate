@@ -58,6 +58,82 @@ export type PageBlockImage = {
   src: string;
 };
 
+/** Sticky note accent (prototype palette). */
+export const PAGE_STICKY_TINTS = ["yellow", "pink", "blue", "green"] as const;
+export type PageStickyTint = (typeof PAGE_STICKY_TINTS)[number];
+
+export function isPageStickyTint(v: string): v is PageStickyTint {
+  return (PAGE_STICKY_TINTS as readonly string[]).includes(v);
+}
+
+export type PageBlockSticky = {
+  kind: "sticky";
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+  tint: PageStickyTint;
+};
+
+/** LaTeX math rendered with KaTeX on the client. */
+export type PageBlockMath = {
+  kind: "math";
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  latex: string;
+  /** `true` = display mode (default); `false` = inline-style sizing. */
+  display?: boolean;
+};
+
+/** Code snippet with notebook-style “window” chrome. */
+export type PageBlockCode = {
+  kind: "code";
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  code: string;
+  /** Shown in the title bar (e.g. `gd.py`). */
+  filename?: string;
+  /** Optional hint for future syntax coloring (currently cosmetic). */
+  language?: string;
+};
+
+/**
+ * Full-page or article embed via `<iframe>` (blog posts, docs sites that allow framing).
+ * Many sites send `X-Frame-Options`; when blocked the iframe stays empty — use “Open” below.
+ */
+export type PageBlockWebEmbed = {
+  kind: "web_embed";
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** https URL */
+  url: string;
+  /** Optional label in the chrome bar */
+  title?: string;
+};
+
+/** Link card for PDFs, archives, or any hosted file (opens in a new tab). */
+export type PageBlockFileCard = {
+  kind: "file_card";
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  url: string;
+  label: string;
+};
+
 /** Rough hand-drawn shapes share geometry + stroke/fill (Excalidraw-style). */
 export type PageRoughShapeKind = "rect" | "ellipse" | "diamond";
 
@@ -92,9 +168,32 @@ export function isPageRoughShapeBlock(b: PageBlock): b is PageBlockRoughShape {
   return b.kind === "rect" || b.kind === "ellipse" || b.kind === "diamond";
 }
 
-export type PageBlock = PageBlockText | PageBlockYoutube | PageBlockImage | PageBlockRoughShape;
+export type PageBlock =
+  | PageBlockText
+  | PageBlockYoutube
+  | PageBlockImage
+  | PageBlockSticky
+  | PageBlockMath
+  | PageBlockCode
+  | PageBlockWebEmbed
+  | PageBlockFileCard
+  | PageBlockRoughShape;
 
 const YT_HOST = /^(?:www\.)?(?:youtube\.com|youtube-nocookie\.com|youtu\.be)$/i;
+
+/** Normalize to an https URL or null (embeds + file cards). */
+export function normalizeHttpsUrl(raw: string): string | null {
+  const s = raw.trim();
+  if (!s || s.length > 2000) return null;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== "https:") return null;
+    if (!u.hostname) return null;
+    return u.href;
+  } catch {
+    return null;
+  }
+}
 
 export function extractYoutubeVideoId(input: string): string | null {
   const raw = input.trim();
@@ -281,6 +380,52 @@ function parsePageBlocksFromRows(rows: unknown[], readRectFn: typeof readRect): 
         ok = false;
       }
       if (ok) out.push({ kind: "image", id, ...rect, src: row.src });
+      continue;
+    }
+    if (kind === "sticky" && typeof row.text === "string") {
+      const tint = typeof row.tint === "string" && isPageStickyTint(row.tint) ? row.tint : "yellow";
+      out.push({
+        kind: "sticky",
+        id,
+        ...rect,
+        text: row.text.slice(0, 4000),
+        tint,
+      });
+      continue;
+    }
+    if (kind === "math" && typeof row.latex === "string") {
+      const latex = row.latex.trim().slice(0, 8000);
+      if (!latex) continue;
+      const display = typeof row.display === "boolean" ? row.display : true;
+      out.push({ kind: "math", id, ...rect, latex, display });
+      continue;
+    }
+    if (kind === "code" && typeof row.code === "string") {
+      const code = row.code.slice(0, 48_000);
+      if (!code.trim()) continue;
+      const filename = typeof row.filename === "string" ? row.filename.trim().slice(0, 120) : undefined;
+      const language = typeof row.language === "string" ? row.language.trim().slice(0, 40) : undefined;
+      out.push({
+        kind: "code",
+        id,
+        ...rect,
+        code,
+        ...(filename ? { filename } : {}),
+        ...(language ? { language } : {}),
+      });
+      continue;
+    }
+    if (kind === "web_embed" && typeof row.url === "string") {
+      const url = normalizeHttpsUrl(row.url);
+      if (!url) continue;
+      const title = typeof row.title === "string" ? row.title.slice(0, 200) : undefined;
+      out.push({ kind: "web_embed", id, ...rect, url, ...(title ? { title } : {}) });
+      continue;
+    }
+    if (kind === "file_card" && typeof row.url === "string" && typeof row.label === "string") {
+      const url = normalizeHttpsUrl(row.url);
+      if (!url) continue;
+      out.push({ kind: "file_card", id, ...rect, url, label: row.label.slice(0, 200) });
       continue;
     }
     if (kind === "rect" || kind === "ellipse" || kind === "diamond") {

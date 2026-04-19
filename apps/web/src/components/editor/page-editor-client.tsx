@@ -18,6 +18,7 @@ import { EditorToolbarDock } from "@/components/editor/editor-toolbar-dock";
 import { InsertBlocksModal } from "@/components/editor/insert-blocks-modal";
 import type { FollowingPageWriteApi } from "@/components/notebook/following-page-ink-surface";
 import { NotebookFollowingPages } from "@/components/notebook/notebook-following-pages";
+import { SharePanel, type ShareLinkRow } from "@/components/share/share-panel";
 import { LaserPointerLayer } from "@/components/editor/laser-pointer-layer";
 import { PageBackground } from "@/components/ink/page-background";
 import type { EditorTool } from "@/components/ink/stroke-canvas";
@@ -43,6 +44,7 @@ import {
   type PageBlock,
   type PageBlockRoughShape,
   type PageRoughShapeKind,
+  type PageStickyTint,
   type PageTextFontId,
 } from "@/lib/page-blocks/types";
 import {
@@ -64,6 +66,126 @@ import {
 } from "@/app/dashboard/notebooks/[notebookId]/pages/[pageId]/actions";
 import type { FollowingSheetPayload } from "@/lib/notebook/following-sheets";
 import type { OutlineSection } from "@/lib/notebook/outline";
+
+const EDITOR_SHEET_PREFS_KEY = "slate:editor-sheet-prefs:v1";
+const EDITOR_NAV_LEFT_KEY = "slate:editor-nav-left:v1";
+const EDITOR_NAV_RIGHT_KEY = "slate:editor-nav-right:v1";
+
+function readEditorNavOpen(key: string, defaultOpen: boolean): boolean {
+  if (typeof window === "undefined") return defaultOpen;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === "0") return false;
+    if (raw === "1") return true;
+    return defaultOpen;
+  } catch {
+    return defaultOpen;
+  }
+}
+
+export type EditorSheetPrefs = {
+  snapToGrid: boolean;
+  showRulers: boolean;
+  showPageNumber: boolean;
+};
+
+function defaultEditorSheetPrefs(): EditorSheetPrefs {
+  return { snapToGrid: true, showRulers: false, showPageNumber: true };
+}
+
+function readEditorSheetPrefs(): EditorSheetPrefs {
+  if (typeof window === "undefined") return defaultEditorSheetPrefs();
+  try {
+    const raw = window.localStorage.getItem(EDITOR_SHEET_PREFS_KEY);
+    if (!raw) return defaultEditorSheetPrefs();
+    const o = JSON.parse(raw) as Partial<EditorSheetPrefs>;
+    return {
+      snapToGrid: typeof o.snapToGrid === "boolean" ? o.snapToGrid : true,
+      showRulers: typeof o.showRulers === "boolean" ? o.showRulers : false,
+      showPageNumber: typeof o.showPageNumber === "boolean" ? o.showPageNumber : true,
+    };
+  } catch {
+    return defaultEditorSheetPrefs();
+  }
+}
+
+const PAGE_BG_OPTIONS = ["plain", "ruled", "grid", "cornell"] as const;
+type PageBgOption = (typeof PAGE_BG_OPTIONS)[number];
+
+function PageBackgroundSwatchPreview({ kind }: { kind: PageBgOption }) {
+  const paper = "var(--paper)";
+  const line = "color-mix(in oklch, var(--rule) 70%, transparent)";
+  if (kind === "plain") {
+    return <div className="h-full w-full rounded-[6px] border border-[var(--chrome-b)]" style={{ background: paper }} />;
+  }
+  if (kind === "ruled") {
+    return (
+      <div
+        className="h-full w-full rounded-[6px] border border-[var(--chrome-b)]"
+        style={{
+          backgroundColor: paper,
+          backgroundImage: `repeating-linear-gradient(to bottom, transparent 0 11px, ${line} 11px 12px)`,
+        }}
+      />
+    );
+  }
+  if (kind === "grid") {
+    return (
+      <div
+        className="h-full w-full rounded-[6px] border border-[var(--chrome-b)]"
+        style={{
+          backgroundColor: paper,
+          backgroundImage: `linear-gradient(${line} 1px, transparent 1px), linear-gradient(90deg, ${line} 1px, transparent 1px)`,
+          backgroundSize: "14px 14px",
+        }}
+      />
+    );
+  }
+  return (
+    <div
+      className="grid h-full w-full grid-cols-[22%_1fr] gap-px overflow-hidden rounded-[6px] border border-[var(--chrome-b)]"
+      style={{ background: paper }}
+    >
+      <div className="min-h-0 border-r border-[var(--chrome-b)] bg-[color-mix(in_oklch,var(--paper-2)_70%,transparent)]" />
+      <div
+        className="min-h-0"
+        style={{
+          backgroundImage: `repeating-linear-gradient(to bottom, transparent 0 10px, ${line} 10px 11px)`,
+        }}
+      />
+    </div>
+  );
+}
+
+function SheetPrefsToggle({
+  label,
+  checked,
+  onChange,
+  disabled,
+  hint,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  hint?: string;
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-transparent px-2 py-2 transition-colors hover:border-[var(--chrome-b)] hover:bg-[var(--paper-2)] ${disabled ? "cursor-not-allowed opacity-50 hover:border-transparent hover:bg-transparent" : ""}`}
+      title={hint}
+    >
+      <span className="text-[13px] leading-snug text-[var(--ink)]">{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 shrink-0 rounded border-[var(--chrome-b)] text-[var(--ink)] focus:ring-2 focus:ring-[var(--accent)]"
+      />
+    </label>
+  );
+}
 
 /** Preset fills for rectangle blocks (Excalidrough hachure vs solid). */
 const RECT_FILL_HACHURE = "rgba(31, 28, 21, 0.12)";
@@ -141,6 +263,8 @@ type Props = {
   /** Read-only previews of later pages (vertical notebook flow). */
   followingSheets?: FollowingSheetPayload[];
   followingSheetsMoreCount?: number;
+  /** Active public share links for this notebook (same payload as notebook overview). */
+  activeShareLinks?: ShareLinkRow[];
 };
 
 export function PageEditorClient({
@@ -158,6 +282,7 @@ export function PageEditorClient({
   serverUiTheme,
   followingSheets = [],
   followingSheetsMoreCount = 0,
+  activeShareLinks = [],
 }: Props) {
   const router = useRouter();
   const uiTheme = useUiTheme(serverUiTheme);
@@ -193,6 +318,15 @@ export function PageEditorClient({
   const [blockDeleteArmedForId, setBlockDeleteArmedForId] = useState<string | null>(null);
   /** TOC sidebar: page id waiting for second click on trash before delete. */
   const [tocPageDeleteArmId, setTocPageDeleteArmId] = useState<string | null>(null);
+  /** Right page sidebar: tips & shortcuts panel starts collapsed for readability. */
+  const [pageSidebarTipsOpen, setPageSidebarTipsOpen] = useState(false);
+  const [sheetPrefs, setSheetPrefs] = useState<EditorSheetPrefs>(() => defaultEditorSheetPrefs());
+  const [navLeftOpen, setNavLeftOpen] = useState(true);
+  const [navRightOpen, setNavRightOpen] = useState(true);
+  /** Optimistic background / paper size for following sheets while sidebar edits land + `router.refresh()`. */
+  const [liveFollowingMeta, setLiveFollowingMeta] = useState<
+    Partial<Record<string, { backgroundType?: string; pageSize?: PageSizeId }>>
+  >({});
 
   const saveTimer = useRef<number | undefined>(undefined);
   const blocksSaveTimer = useRef<number | undefined>(undefined);
@@ -223,7 +357,81 @@ export function PageEditorClient({
     return () => window.clearTimeout(t);
   }, [tocPageDeleteArmId]);
 
+  useEffect(() => {
+    const prefs = readEditorSheetPrefs();
+    queueMicrotask(() => setSheetPrefs(prefs));
+  }, []);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setNavLeftOpen(readEditorNavOpen(EDITOR_NAV_LEFT_KEY, true));
+      setNavRightOpen(readEditorNavOpen(EDITOR_NAV_RIGHT_KEY, true));
+    });
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(EDITOR_NAV_LEFT_KEY, navLeftOpen ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [navLeftOpen]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(EDITOR_NAV_RIGHT_KEY, navRightOpen ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [navRightOpen]);
+
+  const persistSheetPrefs = useCallback((next: EditorSheetPrefs) => {
+    setSheetPrefs(next);
+    try {
+      window.localStorage.setItem(EDITOR_SHEET_PREFS_KEY, JSON.stringify(next));
+    } catch {
+      /* quota / private mode */
+    }
+  }, []);
+
+  /** Bumped when the user asks to scroll to the share panel so `useLayoutEffect` runs even if the sidebar was already open. */
+  const [shareScrollRequest, setShareScrollRequest] = useState(0);
+
+  /** Opens the Page sidebar (if collapsed), exits focus mode, then scrolls the share panel into view after commit. */
+  const focusPublicShareSection = useCallback(() => {
+    setShareScrollRequest((n) => n + 1);
+    setFocusMode(false);
+    setNavRightOpen(true);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (shareScrollRequest === 0) return;
+    if (focusMode || !navRightOpen) return;
+    const el = document.getElementById("notebook-public-share");
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [shareScrollRequest, focusMode, navRightOpen]);
+
   const totalNotebookPages = useMemo(() => outline.reduce((n, sec) => n + sec.pages.length, 0), [outline]);
+
+  const currentSectionTitle = useMemo(
+    () => outline.find((s) => s.id === sectionId)?.title?.trim() ?? "",
+    [outline, sectionId],
+  );
+
+  /** 1-based index through the whole notebook (sections in order, pages by `position`). Not stored — updates on reorder/add/delete. */
+  const notebookPageNav = useMemo(() => {
+    let idx = 0;
+    let total = 0;
+    for (const s of outline) {
+      const nav = [...s.pages].sort((a, b) => a.position - b.position);
+      for (const p of nav) {
+        total++;
+        if (p.id === pageId) idx = total;
+      }
+    }
+    return { idx, total };
+  }, [outline, pageId]);
 
   useLayoutEffect(() => {
     if (!needsPersistWorldMigration) return;
@@ -292,6 +500,38 @@ export function PageEditorClient({
     },
     [pageId, syncSelectBlockId],
   );
+
+  const activeFollowingSheet = useMemo(
+    () => followingSheets.find((s) => s.pageId === activeWritingPageId),
+    [followingSheets, activeWritingPageId],
+  );
+
+  const sidebarBackground = useMemo(() => {
+    if (activeWritingPageId === pageId) return background;
+    const live = liveFollowingMeta[activeWritingPageId];
+    return live?.backgroundType ?? activeFollowingSheet?.backgroundType ?? background;
+  }, [activeWritingPageId, pageId, background, liveFollowingMeta, activeFollowingSheet]);
+
+  const sidebarPageSize = useMemo(() => {
+    if (activeWritingPageId === pageId) return pageSize;
+    const live = liveFollowingMeta[activeWritingPageId];
+    return normalizePageSize(live?.pageSize ?? activeFollowingSheet?.pageSize ?? pageSize);
+  }, [activeWritingPageId, pageId, pageSize, liveFollowingMeta, activeFollowingSheet]);
+
+  useEffect(() => {
+    queueMicrotask(() => setLiveFollowingMeta({}));
+  }, [followingSheets]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setBackground(initialBackground);
+      setPageSize(normalizePageSize(initialPageSize));
+    });
+  }, [initialBackground, initialPageSize]);
+
+  useEffect(() => {
+    queueMicrotask(() => setActiveWritingPageId(pageId));
+  }, [pageId]);
 
   const registerFollowerApi = useCallback((id: string, api: FollowingPageWriteApi) => {
     followerWriteApisRef.current.set(id, api);
@@ -631,6 +871,10 @@ export function PageEditorClient({
   const clearPendingTextEdit = useCallback(() => setPendingTextEditId(null), []);
 
   const addTextBlock = useCallback(() => {
+    if (!readOnly && activeWritingPageId !== pageId) {
+      followerWriteApisRef.current.get(activeWritingPageId)?.addTextBlock();
+      return;
+    }
     const id = crypto.randomUUID();
     const n = blocks.length;
     const aspect = pageLayoutAspectRatio(pageSize);
@@ -657,7 +901,17 @@ export function PageEditorClient({
     setChromeToolAndClearLaser("select");
     syncSelectBlockId(id);
     setPendingTextEditId(id);
-  }, [blocks, applyBlocks, setChromeToolAndClearLaser, background, pageSize, syncSelectBlockId]);
+  }, [
+    readOnly,
+    activeWritingPageId,
+    pageId,
+    blocks,
+    applyBlocks,
+    setChromeToolAndClearLaser,
+    background,
+    pageSize,
+    syncSelectBlockId,
+  ]);
 
   /** Click / double-click empty page — place a text block (Text tool keeps Text active). */
   const placeTextBlockAt = useCallback(
@@ -696,6 +950,10 @@ export function PageEditorClient({
   );
 
   function addYoutubeBlock(videoId: string) {
+    if (!readOnly && activeWritingPageId !== pageId) {
+      followerWriteApisRef.current.get(activeWritingPageId)?.addYoutubeBlock(videoId);
+      return;
+    }
     const id = crypto.randomUUID();
     const n = blocks.length;
     const aspect = pageLayoutAspectRatio(pageSize);
@@ -718,6 +976,10 @@ export function PageEditorClient({
   }
 
   function addImageBlock(src: string) {
+    if (!readOnly && activeWritingPageId !== pageId) {
+      followerWriteApisRef.current.get(activeWritingPageId)?.addImageBlock(src);
+      return;
+    }
     const id = crypto.randomUUID();
     const n = blocks.length;
     const aspect = pageLayoutAspectRatio(pageSize);
@@ -732,6 +994,145 @@ export function PageEditorClient({
         w: 0.4,
         h: 0.28 * aspect,
         src,
+      },
+    ];
+    applyBlocks(next, { recordHistory: true });
+    setChromeToolAndClearLaser("select");
+    syncSelectBlockId(id);
+  }
+
+  function addStickyBlock(tint: PageStickyTint) {
+    if (!readOnly && activeWritingPageId !== pageId) {
+      followerWriteApisRef.current.get(activeWritingPageId)?.addStickyBlock(tint);
+      return;
+    }
+    const id = crypto.randomUUID();
+    const n = blocks.length;
+    const aspect = pageLayoutAspectRatio(pageSize);
+    const w = 0.26;
+    const h = Math.min(0.28 * aspect, aspect * 0.45);
+    const x = Math.min(1 - w - 0.04, 0.06 + (n % 7) * 0.028);
+    const y = Math.min(PAGE_BLOCK_WORLD_UY_CEILING - h, (0.06 + (n % 6) * 0.05) * aspect);
+    const next: PageBlock[] = [
+      ...blocks,
+      {
+        kind: "sticky",
+        id,
+        x,
+        y,
+        w,
+        h,
+        text: "",
+        tint,
+      },
+    ];
+    applyBlocks(next, { recordHistory: true });
+    setChromeToolAndClearLaser("select");
+    syncSelectBlockId(id);
+  }
+
+  function addMathBlock(latex: string, opts?: { display?: boolean }) {
+    if (!readOnly && activeWritingPageId !== pageId) {
+      followerWriteApisRef.current.get(activeWritingPageId)?.addMathBlock(latex, opts);
+      return;
+    }
+    const id = crypto.randomUUID();
+    const n = blocks.length;
+    const aspect = pageLayoutAspectRatio(pageSize);
+    const yLeg = Math.min(0.55, 0.12 + (n % 5) * 0.04);
+    const display = opts?.display !== false;
+    const next: PageBlock[] = [
+      ...blocks,
+      {
+        kind: "math",
+        id,
+        x: Math.min(0.52, 0.08 + (n % 4) * 0.04),
+        y: yLeg * aspect,
+        w: 0.44,
+        h: 0.16 * aspect,
+        latex,
+        display,
+      },
+    ];
+    applyBlocks(next, { recordHistory: true });
+    setChromeToolAndClearLaser("select");
+    syncSelectBlockId(id);
+  }
+
+  function addCodeBlock(code: string, opts?: { filename?: string }) {
+    if (!readOnly && activeWritingPageId !== pageId) {
+      followerWriteApisRef.current.get(activeWritingPageId)?.addCodeBlock(code, opts);
+      return;
+    }
+    const id = crypto.randomUUID();
+    const n = blocks.length;
+    const aspect = pageLayoutAspectRatio(pageSize);
+    const yLeg = Math.min(0.62, 0.1 + (n % 5) * 0.045);
+    const next: PageBlock[] = [
+      ...blocks,
+      {
+        kind: "code",
+        id,
+        x: Math.min(0.48, 0.06 + (n % 3) * 0.05),
+        y: yLeg * aspect,
+        w: 0.46,
+        h: 0.22 * aspect,
+        code,
+        ...(opts?.filename?.trim() ? { filename: opts.filename.trim().slice(0, 120) } : {}),
+      },
+    ];
+    applyBlocks(next, { recordHistory: true });
+    setChromeToolAndClearLaser("select");
+    syncSelectBlockId(id);
+  }
+
+  function addWebEmbedBlock(url: string, title?: string) {
+    if (!readOnly && activeWritingPageId !== pageId) {
+      followerWriteApisRef.current.get(activeWritingPageId)?.addWebEmbedBlock(url, title);
+      return;
+    }
+    const id = crypto.randomUUID();
+    const n = blocks.length;
+    const aspect = pageLayoutAspectRatio(pageSize);
+    const yLeg = Math.min(0.42, 0.1 + (n % 4) * 0.05);
+    const next: PageBlock[] = [
+      ...blocks,
+      {
+        kind: "web_embed",
+        id,
+        x: Math.min(0.38, 0.06 + (n % 3) * 0.04),
+        y: yLeg * aspect,
+        w: 0.52,
+        h: 0.42 * aspect,
+        url,
+        ...(title ? { title } : {}),
+      },
+    ];
+    applyBlocks(next, { recordHistory: true });
+    setChromeToolAndClearLaser("select");
+    syncSelectBlockId(id);
+  }
+
+  function addFileCardBlock(url: string, label: string) {
+    if (!readOnly && activeWritingPageId !== pageId) {
+      followerWriteApisRef.current.get(activeWritingPageId)?.addFileCardBlock(url, label);
+      return;
+    }
+    const id = crypto.randomUUID();
+    const n = blocks.length;
+    const aspect = pageLayoutAspectRatio(pageSize);
+    const yLeg = Math.min(0.72, 0.08 + (n % 5) * 0.045);
+    const next: PageBlock[] = [
+      ...blocks,
+      {
+        kind: "file_card",
+        id,
+        x: Math.min(0.55, 0.06 + (n % 4) * 0.04),
+        y: yLeg * aspect,
+        w: 0.36,
+        h: 0.14 * aspect,
+        url,
+        label,
       },
     ];
     applyBlocks(next, { recordHistory: true });
@@ -756,6 +1157,13 @@ export function PageEditorClient({
       if (findOpen && e.key === "Escape") {
         e.preventDefault();
         setFindOpen(false);
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setFindOpen(true);
+        queueMicrotask(() => findInputRef.current?.focus());
         return;
       }
 
@@ -917,6 +1325,17 @@ export function PageEditorClient({
   const inkLayers = (
     <>
       <PageBackground type={background} />
+      {!readOnly && blocks.length === 0 && strokes.length === 0 && !studentPreview ? (
+        <div className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center p-10">
+          <p className="max-w-[18rem] rounded-2xl border border-dashed border-[color-mix(in_oklch,var(--rule)_85%,var(--chrome-b))] bg-[color-mix(in_oklch,var(--paper)_72%,transparent)] px-6 py-10 text-center text-[14px] italic leading-relaxed text-[var(--ink-3)] shadow-[var(--shadow-1)]">
+            Start writing, drop files, or press{" "}
+            <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1.5 py-0.5 font-mono text-[12px] not-italic text-[var(--ink-2)]">
+              /
+            </kbd>{" "}
+            for the insert menu.
+          </p>
+        </div>
+      ) : null}
       <PageBlocksLayer
         blocks={blocks}
         onBlocksChange={applyBlocks}
@@ -933,6 +1352,7 @@ export function PageEditorClient({
         onShapeDrawCommit={readOnly ? undefined : commitShapeFromDrag}
         shapeDrawKind={shapeDrawKind}
         sheetWorldRef={inkRef}
+        snapToGridEnabled={sheetPrefs.snapToGrid}
       />
       <StrokeCanvas
         strokes={strokes}
@@ -950,6 +1370,39 @@ export function PageEditorClient({
     </>
   );
 
+  const sheetChromeOverlays =
+    !focusMode && (sheetPrefs.showRulers || (sheetPrefs.showPageNumber && notebookPageNav.total > 0)) ? (
+      <>
+        {sheetPrefs.showRulers ? (
+          <>
+            <div
+              className="pointer-events-none absolute left-0 top-0 z-[5] h-5 w-full border-b border-[var(--rule-2)] bg-[color-mix(in_oklch,var(--paper)_94%,transparent)]"
+              style={{
+                backgroundImage:
+                  "repeating-linear-gradient(90deg, transparent 0, transparent 39px, color-mix(in oklch, var(--ink-4) 26%, transparent) 39px 40px)",
+              }}
+              aria-hidden
+            />
+            <div
+              className="pointer-events-none absolute bottom-0 left-0 top-5 z-[5] w-5 border-r border-[var(--rule-2)] bg-[color-mix(in_oklch,var(--paper)_94%,transparent)]"
+              style={{
+                backgroundImage:
+                  "repeating-linear-gradient(180deg, transparent 0, transparent 39px, color-mix(in oklch, var(--ink-4) 26%, transparent) 39px 40px)",
+              }}
+              aria-hidden
+            />
+          </>
+        ) : null}
+        {sheetPrefs.showPageNumber && notebookPageNav.total > 0 ? (
+          <div
+            className={`pointer-events-none absolute right-3 z-[6] rounded-full border border-[var(--chrome-b)] bg-[color-mix(in_oklch,var(--paper)_90%,transparent)] px-2.5 py-1 text-[11px] font-medium tabular-nums text-[var(--ink-3)] shadow-sm backdrop-blur-sm ${sheetPrefs.showRulers ? "top-7" : "top-3"}`}
+          >
+            p. {String(notebookPageNav.idx).padStart(2, "0")} / {String(notebookPageNav.total).padStart(2, "0")}
+          </div>
+        ) : null}
+      </>
+    ) : null;
+
   return (
     <div
       className={
@@ -964,7 +1417,17 @@ export function PageEditorClient({
         onAddText={addTextBlock}
         onAddYoutube={addYoutubeBlock}
         onAddImage={addImageBlock}
+        onAddSticky={addStickyBlock}
+        onAddWebEmbed={addWebEmbedBlock}
+        onAddFileCard={addFileCardBlock}
+        onAddMath={addMathBlock}
+        onAddCode={addCodeBlock}
         onAddRoughShape={(kind) => {
+          if (!readOnly && activeWritingPageId !== pageId) {
+            followerWriteApisRef.current.get(activeWritingPageId)?.beginRoughShapeDraw(kind);
+            setInsertOpen(false);
+            return;
+          }
           setShapeDrawKind(kind);
           setInsertOpen(false);
           setChromeToolAndClearLaser("shapes");
@@ -1048,25 +1511,49 @@ export function PageEditorClient({
       ) : null}
 
       {!focusMode && (
-        <div className="flex flex-wrap items-center justify-between gap-3 text-sm print:hidden">
-          <div className="flex flex-wrap items-center gap-2 text-[var(--ink-3)]">
-            <Link className="hover:underline" href="/dashboard">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color-mix(in_oklch,var(--rule)_55%,transparent)] pb-4 text-sm print:hidden">
+          <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] leading-snug text-[var(--ink-3)]">
+            <Link className="shrink-0 rounded-md px-1 py-0.5 hover:bg-[var(--paper-2)] hover:text-[var(--ink)]" href="/dashboard">
               Dashboard
             </Link>
-            <span>/</span>
-            <Link className="max-w-[14rem] truncate hover:underline" href={`/dashboard/notebooks/${notebookId}`} title={spineTitle}>
+            <span className="shrink-0 text-[var(--ink-4)]" aria-hidden>
+              /
+            </span>
+            <Link
+              className="min-w-0 max-w-[12rem] truncate rounded-md px-1 py-0.5 hover:bg-[var(--paper-2)] hover:text-[var(--ink)]"
+              href={`/dashboard/notebooks/${notebookId}`}
+              title={spineTitle}
+            >
               {spineTitle}
             </Link>
-            <span>/</span>
-            <span className="text-[var(--ink)]">Page</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-[var(--ink-4)]">
+            {currentSectionTitle ? (
+              <>
+                <span className="shrink-0 text-[var(--ink-4)]" aria-hidden>
+                  /
+                </span>
+                <Link
+                  className="min-w-0 max-w-[11rem] truncate rounded-md px-1 py-0.5 hover:bg-[var(--paper-2)] hover:text-[var(--ink)]"
+                  href={`/dashboard/notebooks/${notebookId}`}
+                  title={currentSectionTitle}
+                >
+                  {currentSectionTitle}
+                </Link>
+              </>
+            ) : null}
+            <span className="shrink-0 text-[var(--ink-4)]" aria-hidden>
+              /
+            </span>
+            <span className="min-w-0 max-w-[14rem] truncate font-medium text-[var(--ink)]" title={title}>
+              {title.trim() || "Untitled page"}
+            </span>
+          </nav>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="text-xs tabular-nums text-[var(--ink-4)]">
               {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "error" ? "Save failed" : ""}
             </span>
             <button
               type="button"
-              className="rounded-lg border border-[var(--chrome-b)] bg-[var(--paper)] px-3 py-1.5 text-xs font-semibold"
+              className="rounded-lg border border-[var(--chrome-b)] bg-[var(--paper)] px-3 py-1.5 text-xs font-semibold text-[var(--ink-2)] hover:bg-[var(--paper-2)]"
               onClick={() => setFindOpen((v) => !v)}
               title="Find on this page (⌘F / Ctrl+F)"
             >
@@ -1074,7 +1561,7 @@ export function PageEditorClient({
             </button>
             <button
               type="button"
-              className="rounded-lg border border-[var(--chrome-b)] bg-[var(--paper)] px-3 py-1.5 text-xs font-semibold"
+              className="rounded-lg border border-[var(--chrome-b)] bg-[var(--paper)] px-3 py-1.5 text-xs font-semibold text-[var(--ink-2)] hover:bg-[var(--paper-2)]"
               onClick={() => window.print()}
               title="Open the print dialog — choose “Save as PDF” to export"
             >
@@ -1082,18 +1569,27 @@ export function PageEditorClient({
             </button>
             <button
               type="button"
-              className="rounded-lg border border-[var(--chrome-b)] bg-[var(--paper)] px-3 py-1.5 text-xs font-semibold"
+              className="rounded-lg border border-[var(--chrome-b)] bg-[var(--paper)] px-3 py-1.5 text-xs font-semibold text-[var(--ink-2)] hover:bg-[var(--paper-2)]"
               onClick={() => setFocusMode((v) => !v)}
               title="Toggle focus (F)"
             >
-              {focusMode ? "Exit focus" : "Focus (F)"}
+              {focusMode ? "Exit focus" : "Focus"}
             </button>
             <button
               type="button"
-              className="rounded-lg border border-[var(--chrome-b)] bg-[var(--paper)] px-3 py-1.5 text-xs font-semibold"
+              className="rounded-lg border border-[var(--chrome-b)] bg-[var(--paper)] px-3 py-1.5 text-xs font-semibold text-[var(--ink-2)] hover:bg-[var(--paper-2)]"
               onClick={() => setStudentPreview((v) => !v)}
+              title="Read-only ink and blocks (student-facing preview)"
             >
-              {studentPreview ? "Exit student preview" : "Student preview"}
+              {studentPreview ? "Exit preview" : "Preview"}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-[var(--ink)] px-3 py-1.5 text-xs font-semibold text-[var(--paper)] shadow-[var(--shadow-1)] hover:opacity-90"
+              title="Jump to Public read-only link in the Page sidebar (exits focus mode if needed)"
+              onClick={focusPublicShareSection}
+            >
+              Share
             </button>
           </div>
         </div>
@@ -1124,6 +1620,14 @@ export function PageEditorClient({
           >
             Exit focus
           </button>
+          <button
+            type="button"
+            className="rounded-lg bg-[var(--ink)] px-3 py-1.5 text-xs font-semibold text-[var(--paper)] shadow-[var(--shadow-1)] hover:opacity-90"
+            title="Jump to Public read-only link in the Page sidebar"
+            onClick={focusPublicShareSection}
+          >
+            Share
+          </button>
         </div>
       )}
 
@@ -1132,12 +1636,47 @@ export function PageEditorClient({
         className={
           focusMode
             ? "min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain p-4 print:overflow-visible print:p-0"
-            : "grid gap-6 lg:grid-cols-[minmax(260px,0.34fr)_minmax(0,1fr)_260px] lg:items-start print:grid-cols-1 print:gap-0"
+            : ""
         }
       >
-        {!focusMode && (
-          <aside className="sticky top-20 z-10 flex max-h-[calc(100vh-8rem)] min-h-0 flex-col gap-3 self-start overflow-hidden rounded-[var(--r-lg)] border border-[var(--rule)] bg-[var(--paper)] p-3 text-sm lg:top-24 lg:max-h-[calc(100vh-10rem)] print:hidden">
-            <div className="shrink-0 text-xs font-bold uppercase tracking-wide text-[var(--ink-3)]">Sections & pages</div>
+        <div
+          className={
+            !focusMode
+              ? "mx-[calc(50%-50vw)] flex w-screen max-w-[100vw] items-stretch print:mx-0 print:w-full print:flex-col"
+              : "contents"
+          }
+        >
+          {!focusMode &&
+            (navLeftOpen ? (
+              <aside className="relative sticky top-20 z-10 flex h-[calc(100dvh-5.5rem)] w-[min(320px,36vw)] max-w-[380px] shrink-0 flex-col gap-3 self-start overflow-hidden border-r border-[var(--rule)] bg-[var(--paper)] p-3 shadow-sm lg:top-24 print:hidden">
+                <button
+                  type="button"
+                  className="absolute right-2 top-2 z-20 grid h-8 w-8 place-items-center rounded-lg border border-[var(--chrome-b)] bg-[color-mix(in_oklch,var(--paper)_92%,transparent)] text-[var(--ink-2)] shadow-sm backdrop-blur-sm hover:bg-[var(--paper-2)]"
+                  aria-label="Collapse outline sidebar"
+                  title="Collapse outline"
+                  onClick={() => setNavLeftOpen(false)}
+                >
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
+                    <path d="M11 5l-5 5 5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <div className="relative shrink-0">
+              <input
+                type="search"
+                readOnly
+                onFocus={() => {
+                  setFindOpen(true);
+                  queueMicrotask(() => findInputRef.current?.focus());
+                }}
+                placeholder="Search notebook…"
+                className="w-full cursor-pointer rounded-xl border border-[var(--chrome-b)] bg-[var(--paper-2)] py-2 pl-3 pr-14 text-[13px] text-[var(--ink)] outline-none transition-colors placeholder:text-[var(--ink-4)] focus:border-[var(--ink-3)] focus:bg-[var(--paper)]"
+                aria-label="Open find (⌘K)"
+              />
+              <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ink-4)]">
+                ⌘K
+              </kbd>
+            </div>
+            <div className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-[var(--ink-3)]">{"Sections & pages"}</div>
             <div className="min-h-0 flex-1 touch-pan-y space-y-4 overflow-y-auto overscroll-y-contain pr-1">
               {outline.map((sec) => {
                 const nav = [...sec.pages].sort((a, b) => a.position - b.position);
@@ -1213,8 +1752,10 @@ export function PageEditorClient({
                         {nav.map((p) => (
                           <li key={p.id} className="flex items-center gap-0.5">
                             <Link
-                              className={`min-w-0 flex-1 truncate rounded-md px-2 py-1 text-[13px] hover:bg-[var(--paper-2)] ${
-                                p.id === pageId ? "bg-[var(--accent-soft)] font-semibold text-[var(--ink)]" : "text-[var(--ink-2)]"
+                              className={`min-w-0 flex-1 truncate rounded-full px-3 py-1.5 text-[13px] transition-colors ${
+                                p.id === pageId
+                                  ? "bg-[color-mix(in_oklch,var(--accent-soft)_92%,var(--paper))] font-semibold text-[var(--ink)] ring-1 ring-[color-mix(in_oklch,var(--accent)_32%,transparent)]"
+                                  : "text-[var(--ink-2)] hover:bg-[var(--paper-2)]"
                               }`}
                               href={`/dashboard/notebooks/${notebookId}/pages/${p.id}`}
                             >
@@ -1333,11 +1874,51 @@ export function PageEditorClient({
                 Delete page…
               </button>
             </div>
-          </aside>
-        )}
+              </aside>
+            ) : (
+              <div className="sticky top-20 z-10 flex h-[calc(100dvh-5.5rem)] w-11 shrink-0 flex-col items-center border-r border-[var(--rule)] bg-[var(--paper)] pt-3 shadow-sm lg:top-24 print:hidden">
+                <button
+                  type="button"
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--chrome-b)] text-[var(--ink-2)] hover:bg-[var(--paper-2)]"
+                  aria-label="Expand outline sidebar"
+                  title="Expand outline"
+                  onClick={() => setNavLeftOpen(true)}
+                >
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
+                    <path d="M9 5l5 5-5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+
+        {!readOnly && !focusMode ? (
+          <div className="sticky top-20 z-[45] hidden h-[calc(100dvh-5.5rem)] shrink-0 flex-col items-center justify-center self-start pl-1 pr-6 lg:top-24 lg:flex print:hidden">
+            <EditorToolbarDock
+              tool={chromeTool}
+              onToolChange={setChromeToolAndClearLaser}
+              color={color}
+              onColorChange={setColor}
+              penSize={penSize}
+              onPenSizeChange={setPenSize}
+              onUndo={runToolbarUndo}
+              onRedo={runToolbarRedo}
+              canUndo={dockCanUndo}
+              canRedo={dockCanRedo}
+              onInsert={() => setInsertOpen(true)}
+              readOnly={readOnly}
+              textFontSizePx={textBlockToolbar?.px}
+              onTextFontSizePxChange={textBlockToolbar ? setSelectedTextFontSizePx : undefined}
+              textFontFamily={textBlockToolbar?.ff}
+              onTextFontFamilyChange={textBlockToolbar ? setSelectedTextFontFamily : undefined}
+              shapeDrawKind={shapeDrawKind}
+              onShapeDrawKindChange={setShapeDrawKind}
+              ssrUiTheme={serverUiTheme}
+            />
+          </div>
+        ) : null}
 
         <div
-          className={`space-y-3 print:max-w-none print:space-y-2 ${focusMode ? "mx-auto w-full max-w-[1180px] print:mx-0 print:w-full print:max-w-none" : ""}`}
+          className={`space-y-3 print:max-w-none print:space-y-2 ${focusMode ? "mx-auto w-full max-w-[1180px] print:mx-0 print:w-full print:max-w-none" : "min-w-0 flex-1 px-3 sm:px-5"}`}
         >
           {focusMode ? (
             <div data-page-find="title" className="sr-only" aria-hidden>
@@ -1345,14 +1926,16 @@ export function PageEditorClient({
             </div>
           ) : null}
           {!focusMode && (
-            <div data-page-find="title">
+            <div data-page-find="title" className="space-y-1 print:hidden">
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 onBlur={() => void onTitleBlur()}
-                className="w-full max-w-2xl rounded-lg border border-[var(--chrome-b)] bg-[var(--paper)] px-3 py-2 text-lg font-[family-name:var(--font-instrument-serif)] text-[var(--ink)] outline-none focus:border-[var(--ink)] print:hidden"
+                placeholder="Untitled page"
+                className="w-full max-w-3xl border-0 border-b-2 border-transparent bg-transparent px-0 py-1.5 text-3xl font-[family-name:var(--font-instrument-serif)] leading-tight tracking-tight text-[var(--ink)] outline-none transition-colors placeholder:text-[var(--ink-4)] focus:border-[color-mix(in_oklch,var(--rule)_80%,var(--ink))] sm:text-4xl"
               />
-              <h1 className="hidden max-w-2xl text-lg font-[family-name:var(--font-instrument-serif)] leading-snug text-[var(--ink)] print:block">
+              <p className="text-[13px] leading-relaxed text-[var(--ink-4)]">Blank canvas — drop anything here.</p>
+              <h1 className="hidden font-[family-name:var(--font-instrument-serif)] text-3xl leading-tight text-[var(--ink)] print:block">
                 {title}
               </h1>
             </div>
@@ -1446,31 +2029,6 @@ export function PageEditorClient({
           )}
 
           <div className="relative mx-auto w-full max-w-[1180px] print:mx-0 print:max-w-none">
-            {!readOnly && (
-              <div className="pointer-events-none fixed left-3 top-1/2 z-[45] hidden -translate-y-1/2 lg:block print:hidden">
-                <EditorToolbarDock
-                  tool={chromeTool}
-                  onToolChange={setChromeToolAndClearLaser}
-                  color={color}
-                  onColorChange={setColor}
-                  penSize={penSize}
-                  onPenSizeChange={setPenSize}
-                  onUndo={runToolbarUndo}
-                  onRedo={runToolbarRedo}
-                  canUndo={dockCanUndo}
-                  canRedo={dockCanRedo}
-                  onInsert={() => setInsertOpen(true)}
-                  readOnly={readOnly}
-                  textFontSizePx={textBlockToolbar?.px}
-                  onTextFontSizePxChange={textBlockToolbar ? setSelectedTextFontSizePx : undefined}
-                  textFontFamily={textBlockToolbar?.ff}
-                  onTextFontFamilyChange={textBlockToolbar ? setSelectedTextFontFamily : undefined}
-                  shapeDrawKind={shapeDrawKind}
-                  onShapeDrawKindChange={setShapeDrawKind}
-                  ssrUiTheme={serverUiTheme}
-                />
-              </div>
-            )}
             <div
               data-slate-print-sheet
               className={`relative isolate w-full break-inside-avoid rounded-md bg-[var(--paper)] shadow-[var(--shadow-2)] print:rounded-sm print:shadow-none print:break-inside-avoid ${
@@ -1480,6 +2038,7 @@ export function PageEditorClient({
             >
               {isFullBleedInk ? (
                 <div className="absolute inset-0 min-h-0 overflow-hidden">
+                  {sheetChromeOverlays}
                   <div
                     ref={inkRef}
                     className="relative isolate h-full w-full overflow-hidden"
@@ -1499,10 +2058,34 @@ export function PageEditorClient({
                   onPointerMove={onInkPointerMove}
                   onPointerLeave={onInkPointerLeave}
                 >
+                  {sheetChromeOverlays}
                   {inkLayers}
                 </div>
               ) : null}
             </div>
+            {!focusMode && notebookPageNav.total > 0 ? (
+              <div className="mt-4 flex justify-center print:hidden">
+                <div className="inline-flex items-center gap-3 rounded-full border border-[var(--chrome-b)] bg-[color-mix(in_oklch,var(--paper)_94%,transparent)] px-4 py-2 text-[12px] font-medium text-[var(--ink-2)] shadow-[var(--shadow-1)]">
+                  <span className="tabular-nums text-[var(--ink)]">
+                    Page {String(notebookPageNav.idx).padStart(2, "0")} / {String(notebookPageNav.total).padStart(2, "0")}
+                  </span>
+                  <span className="h-1 w-1 shrink-0 rounded-full bg-[var(--ink-4)]" aria-hidden />
+                  <button
+                    type="button"
+                    disabled={pending}
+                    className="rounded-full bg-[var(--ink)] px-3 py-1 text-[11px] font-semibold text-[var(--paper)] hover:opacity-90 disabled:opacity-50"
+                    onClick={() =>
+                      start(async () => {
+                        const { pageId: nid } = await createPageAction(notebookId, sectionId);
+                        router.push(`/dashboard/notebooks/${notebookId}/pages/${nid}`);
+                      })
+                    }
+                  >
+                    + Add page
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {!focusMode && (followingSheets.length > 0 || followingSheetsMoreCount > 0) ? (
               <NotebookFollowingPages
                 notebookId={notebookId}
@@ -1510,6 +2093,7 @@ export function PageEditorClient({
                 moreCount={followingSheetsMoreCount}
                 chromeTool={chromeTool}
                 setChromeToolAndClearLaser={setChromeToolAndClearLaser}
+                setShapeDrawKind={setShapeDrawKind}
                 shapeDrawKind={shapeDrawKind}
                 color={color}
                 penSize={penSize}
@@ -1518,6 +2102,7 @@ export function PageEditorClient({
                 registerFollowerApi={registerFollowerApi}
                 unregisterFollowerApi={unregisterFollowerApi}
                 onFocusWritingSurface={focusWritingSurface}
+                liveFollowingMeta={liveFollowingMeta}
               />
             ) : null}
           </div>
@@ -1680,51 +2265,140 @@ export function PageEditorClient({
           )}
         </div>
 
-        {!focusMode && (
-          <aside className="sticky top-20 z-10 max-h-[calc(100vh-8rem)] space-y-4 self-start overflow-y-auto rounded-[var(--r-lg)] border border-[var(--rule)] bg-[var(--paper)] p-3 text-sm lg:top-24 lg:max-h-[calc(100vh-10rem)] print:hidden">
-            <div className="text-xs font-bold uppercase tracking-wide text-[var(--ink-3)]">Page background</div>
-            <div className="grid grid-cols-2 gap-2">
-              {(["plain", "ruled", "grid", "cornell"] as const).map((bg) => (
-                <button
-                  key={bg}
-                  type="button"
-                  disabled={pending}
-                  onClick={() => {
-                    setBackground(bg);
-                    start(async () => {
-                      await updatePageMetaAction(notebookId, pageId, { backgroundType: bg });
-                      router.refresh();
-                    });
-                  }}
-                  className={`rounded-md border px-2 py-2 text-xs font-semibold capitalize ${
-                    background === bg ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]" : "border-[var(--chrome-b)]"
-                  }`}
-                >
-                  {bg}
-                </button>
-              ))}
+        {!focusMode &&
+          (navRightOpen ? (
+            <aside className="relative sticky top-20 z-10 flex h-[calc(100dvh-5.5rem)] w-[min(300px,32vw)] max-w-[320px] shrink-0 flex-col gap-4 self-start overflow-y-auto overflow-x-hidden border-l border-[var(--rule)] bg-[var(--paper)] p-4 pt-11 text-sm shadow-sm lg:top-24 print:hidden">
+              <button
+                type="button"
+                className="absolute left-2 top-2 z-20 grid h-8 w-8 place-items-center rounded-lg border border-[var(--chrome-b)] bg-[color-mix(in_oklch,var(--paper)_92%,transparent)] text-[var(--ink-2)] shadow-sm backdrop-blur-sm hover:bg-[var(--paper-2)]"
+                aria-label="Collapse page sidebar"
+                title="Collapse page tools"
+                onClick={() => setNavRightOpen(false)}
+              >
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
+                  <path d="M9 5l5 5-5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            <div className="rounded-full bg-[var(--paper-2)] p-1">
+              <div className="rounded-full bg-[var(--paper)] py-2 text-center text-[12px] font-semibold tracking-wide text-[var(--ink)] shadow-[var(--shadow-1)]">
+                Page
+              </div>
             </div>
-            <div className="text-xs font-bold uppercase tracking-wide text-[var(--ink-3)]">Paper size</div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {PAGE_SIZE_IDS.map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={pending}
-                  onClick={() => {
-                    setPageSize(id);
-                    start(async () => {
-                      await updatePageMetaAction(notebookId, pageId, { pageSize: id });
-                      router.refresh();
-                    });
-                  }}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                    pageSize === id ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]" : "border-[var(--chrome-b)] text-[var(--ink-2)]"
-                  }`}
-                >
-                  {PAGE_SIZE_LABELS[id]}
-                </button>
-              ))}
+
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--ink-3)]">Page background</div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {PAGE_BG_OPTIONS.map((bg) => {
+                  const active = sidebarBackground === bg;
+                  return (
+                    <button
+                      key={bg}
+                      type="button"
+                      disabled={pending}
+                      title={bg}
+                      onClick={() => {
+                        const targetId = activeWritingPageId;
+                        if (targetId === pageId) {
+                          setBackground(bg);
+                        } else {
+                          setLiveFollowingMeta((m) => ({
+                            ...m,
+                            [targetId]: { ...m[targetId], backgroundType: bg },
+                          }));
+                        }
+                        start(async () => {
+                          await updatePageMetaAction(notebookId, targetId, { backgroundType: bg });
+                          router.refresh();
+                        });
+                      }}
+                      className={`flex flex-col gap-1 overflow-hidden rounded-xl border p-1.5 text-left transition-colors ${
+                        active
+                          ? "border-[var(--ink)] ring-2 ring-[color-mix(in_oklch,var(--accent)_40%,transparent)]"
+                          : "border-[var(--chrome-b)] hover:border-[var(--ink-3)]"
+                      }`}
+                    >
+                      <div className="aspect-[5/3] w-full min-h-[52px] overflow-hidden rounded-lg bg-[var(--paper-2)]">
+                        <PageBackgroundSwatchPreview kind={bg} />
+                      </div>
+                      <span
+                        className={`px-0.5 pb-0.5 text-center text-[10px] font-semibold capitalize ${active ? "text-[var(--ink)]" : "text-[var(--ink-2)]"}`}
+                      >
+                        {bg}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--ink-3)]">Paper size</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {PAGE_SIZE_IDS.map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    disabled={pending}
+                    onClick={() => {
+                      const targetId = activeWritingPageId;
+                      if (targetId === pageId) {
+                        setPageSize(id);
+                      } else {
+                        setLiveFollowingMeta((m) => ({
+                          ...m,
+                          [targetId]: { ...m[targetId], pageSize: id },
+                        }));
+                      }
+                      start(async () => {
+                        await updatePageMetaAction(notebookId, targetId, { pageSize: id });
+                        router.refresh();
+                      });
+                    }}
+                    className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                      sidebarPageSize === id
+                        ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)] shadow-sm"
+                        : "border-[var(--chrome-b)] text-[var(--ink-2)] hover:border-[var(--ink-3)] hover:bg-[var(--paper-2)]"
+                    }`}
+                  >
+                    {PAGE_SIZE_LABELS[id]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div id="notebook-public-share" className="scroll-mt-4 border-t border-[var(--chrome-b)] pt-3">
+              <SharePanel notebookId={notebookId} links={activeShareLinks} embedded />
+            </div>
+
+            <div className="space-y-0.5 border-t border-[var(--chrome-b)] pt-3">
+              <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--ink-3)]">Page options</div>
+              <SheetPrefsToggle
+                label="Snap to grid"
+                checked={sheetPrefs.snapToGrid}
+                onChange={(v) => persistSheetPrefs({ ...sheetPrefs, snapToGrid: v })}
+                hint="When off, hold Shift to snap while moving or resizing blocks."
+              />
+              <SheetPrefsToggle
+                label="Show rulers"
+                checked={sheetPrefs.showRulers}
+                onChange={(v) => persistSheetPrefs({ ...sheetPrefs, showRulers: v })}
+                hint="Light rulers along the top and left edge of the sheet."
+              />
+              <SheetPrefsToggle
+                label="Page number"
+                checked={sheetPrefs.showPageNumber}
+                onChange={(v) => persistSheetPrefs({ ...sheetPrefs, showPageNumber: v })}
+                hint="Show page index on the sheet (e.g. p. 03 / 12)."
+              />
+              <div
+                className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 text-[13px] text-[var(--ink-4)]"
+                title="Coming soon"
+              >
+                <span>Lock page</span>
+                <span className="shrink-0 rounded-full bg-[var(--paper-2)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                  Soon
+                </span>
+              </div>
             </div>
             {!readOnly && chromeTool === "select" && selectedRoughShapeBlock ? (
               <div className="space-y-2 border-t border-[var(--chrome-b)] pt-3">
@@ -1765,32 +2439,147 @@ export function PageEditorClient({
                 </p>
               </div>
             ) : null}
-            <p className="text-[11px] leading-snug text-[var(--ink-3)]">
-              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">T</kbd> Text tool: click
-              to type (line height follows ruled/grid).               <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">M</kbd>{" "}
-              Select: drag the left strip to move (blocks snap to a light grid; hold{" "}
-              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">Shift</kbd> while dragging or
-              resizing to turn snap off). While typing, boxes grow with content. If the pen is active, select a note then press{" "}
-              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">Enter</kbd> to edit. With Text or
-              Select active, pick a note or click into it to type: a <span className="font-semibold text-[var(--ink-2)]">Handwriting</span> size panel
-              opens to the right of the dock.{" "}
-              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">⌘D</kbd> /{" "}
-              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">Ctrl+D</kbd> duplicates the
-              selected block. With Select or Text active, press{" "}
-              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">Delete</kbd> or{" "}
-              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">Backspace</kbd> twice to remove a
-              selected block (not while typing inside a note). Use <span className="font-semibold text-[var(--ink-2)]">Print / PDF</span> (top bar or
-              focus bar) to open the system
-              print dialog — choose “Save as PDF” where your browser or OS offers it.{" "}
-              <span className="font-semibold text-[var(--ink-2)]">Find</span> (or{" "}
-              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">⌘F</kbd> /{" "}
-              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">Ctrl+F</kbd>) searches the page
-              title and handwriting notes; <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">F3</kbd>{" "}
-              / <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">⇧F3</kbd> steps matches when the
-              find bar is open.
-            </p>
+            <div className="border-t border-[var(--chrome-b)] pt-3">
+              <button
+                type="button"
+                aria-expanded={pageSidebarTipsOpen}
+                aria-controls="page-editor-sidebar-tips"
+                id="page-editor-sidebar-tips-toggle"
+                onClick={() => setPageSidebarTipsOpen((v) => !v)}
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-[var(--chrome-b)] bg-[var(--paper-2)] px-3 py-2.5 text-left transition-colors hover:border-[var(--ink-3)] hover:bg-[var(--paper)]"
+              >
+                <span className="text-[13px] font-semibold leading-tight text-[var(--ink)]">{"Tips & keyboard shortcuts"}</span>
+                <span className="shrink-0 tabular-nums text-[11px] font-medium text-[var(--ink-3)]" aria-hidden>
+                  {pageSidebarTipsOpen ? "Hide" : "Show"}
+                </span>
+              </button>
+              {pageSidebarTipsOpen ? (
+                <div
+                  id="page-editor-sidebar-tips"
+                  role="region"
+                  aria-labelledby="page-editor-sidebar-tips-toggle"
+                  className="mt-3 rounded-lg border border-[var(--chrome-b)] bg-[var(--paper-2)] p-3 text-[13px] leading-relaxed text-[var(--ink-2)]"
+                >
+                  <ul className="list-disc space-y-2.5 pl-[1.15rem] marker:text-[var(--ink-3)]">
+                    <li>
+                      <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
+                        T
+                      </kbd>{" "}
+                      <span className="font-medium text-[var(--ink)]">Text tool:</span> click the page to type. Line height follows ruled / grid
+                      lines.
+                    </li>
+                    <li>
+                      <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
+                        M
+                      </kbd>{" "}
+                      <span className="font-medium text-[var(--ink)]">Select:</span> drag the left strip on a note to move it. Blocks snap to a light
+                      grid (toggle <span className="font-medium">Snap to grid</span> in Page options); hold{" "}
+                      <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
+                        Shift
+                      </kbd>{" "}
+                      while dragging or resizing to turn snap off.
+                    </li>
+                    <li>
+                      While typing, text boxes grow with the content. If the pen is active, select a note, then press{" "}
+                      <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
+                        Enter
+                      </kbd>{" "}
+                      to edit it.
+                    </li>
+                    <li>
+                      With Text or Select active, click a note to type. A{" "}
+                      <span className="font-semibold text-[var(--ink)]">Handwriting</span> size panel appears to the right of the tool dock.
+                    </li>
+                    <li>
+                      <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
+                        ⌘D
+                      </kbd>{" "}
+                      /{" "}
+                      <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
+                        Ctrl+D
+                      </kbd>{" "}
+                      duplicates the selected block.
+                    </li>
+                    <li>
+                      With Select or Text active, press{" "}
+                      <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
+                        Delete
+                      </kbd>{" "}
+                      or{" "}
+                      <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
+                        Backspace
+                      </kbd>{" "}
+                      twice to remove a selected block (not while the caret is inside a note).
+                    </li>
+                    <li>
+                      <span className="font-semibold text-[var(--ink)]">Print / PDF</span> (top bar or focus bar) opens the system print dialog — use
+                      “Save as PDF” where your browser or OS offers it.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-[var(--ink)]">Find</span> (
+                      <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
+                        ⌘F
+                      </kbd>{" "}
+                      /{" "}
+                      <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
+                        Ctrl+F
+                      </kbd>
+                      ) searches the page title and handwriting notes.{" "}
+                      <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
+                        F3
+                      </kbd>{" "}
+                      /{" "}
+                      <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
+                        ⇧F3
+                      </kbd>{" "}
+                      step through matches when the find bar is open.
+                    </li>
+                  </ul>
+                </div>
+              ) : null}
+            </div>
           </aside>
-        )}
+          ) : (
+            <div className="sticky top-20 z-10 flex h-[calc(100dvh-5.5rem)] w-11 shrink-0 flex-col items-center border-l border-[var(--rule)] bg-[var(--paper)] pt-3 shadow-sm lg:top-24 print:hidden">
+              <button
+                type="button"
+                className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--chrome-b)] text-[var(--ink-2)] hover:bg-[var(--paper-2)]"
+                aria-label="Expand page sidebar"
+                title="Expand page tools"
+                onClick={() => setNavRightOpen(true)}
+              >
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
+                  <path d="M11 5l-5 5 5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+        {focusMode && !readOnly ? (
+          <div className="pointer-events-none fixed left-4 top-1/2 z-[45] hidden -translate-y-1/2 lg:block print:hidden">
+            <EditorToolbarDock
+              tool={chromeTool}
+              onToolChange={setChromeToolAndClearLaser}
+              color={color}
+              onColorChange={setColor}
+              penSize={penSize}
+              onPenSizeChange={setPenSize}
+              onUndo={runToolbarUndo}
+              onRedo={runToolbarRedo}
+              canUndo={dockCanUndo}
+              canRedo={dockCanRedo}
+              onInsert={() => setInsertOpen(true)}
+              readOnly={readOnly}
+              textFontSizePx={textBlockToolbar?.px}
+              onTextFontSizePxChange={textBlockToolbar ? setSelectedTextFontSizePx : undefined}
+              textFontFamily={textBlockToolbar?.ff}
+              onTextFontFamilyChange={textBlockToolbar ? setSelectedTextFontFamily : undefined}
+              shapeDrawKind={shapeDrawKind}
+              onShapeDrawKindChange={setShapeDrawKind}
+              ssrUiTheme={serverUiTheme}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

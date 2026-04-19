@@ -1,4 +1,7 @@
+import { inArray } from "drizzle-orm";
 import { getPageContextForOwner } from "@/lib/access/page";
+import { db } from "@/lib/db";
+import { pages, sections } from "@/lib/db/schema";
 import { normalizePageSize, type PageSizeId } from "@/lib/ink/page-size";
 import type { InkStroke } from "@/lib/ink/types";
 import type { PageBlock } from "@/lib/page-blocks/types";
@@ -84,6 +87,68 @@ export async function loadFollowingSheets(
       sectionBreak,
       backgroundType: ctx.page.backgroundType,
       pageSize: normalizePageSize(ctx.page.pageSize ?? undefined),
+      strokes: coords.strokes,
+      blocks: coords.blocks,
+    });
+
+    prevSectionId = meta.sectionId;
+  }
+
+  return { sheets, moreCount };
+}
+
+/**
+ * Same ordering as {@link loadFollowingSheets}, but for public share views: loads page rows
+ * when they belong to `notebookId` (no workspace owner check). Caller must have already
+ * validated share access for this notebook.
+ */
+export async function loadFollowingSheetsForShare(
+  notebookId: string,
+  outline: OutlineSection[],
+  currentPageId: string,
+): Promise<LoadFollowingSheetsResult> {
+  const ordered = flattenOutline(outline);
+  const idx = ordered.findIndex((x) => x.pageId === currentPageId);
+  if (idx < 0) return { sheets: [], moreCount: 0 };
+
+  const tail = ordered.slice(idx + 1);
+  const slice = tail.slice(0, MAX_SHEETS);
+  const moreCount = tail.length - slice.length;
+  if (slice.length === 0) return { sheets: [], moreCount };
+
+  const pageIds = slice.map((s) => s.pageId);
+  const pageRows = await db.select().from(pages).where(inArray(pages.id, pageIds));
+  const pageById = new Map(pageRows.map((p) => [p.id, p]));
+
+  const sectionIdSet = new Set(pageRows.map((p) => p.sectionId));
+  const sectionRows =
+    sectionIdSet.size === 0 ? [] : await db.select().from(sections).where(inArray(sections.id, [...sectionIdSet]));
+  const sectionById = new Map(sectionRows.map((s) => [s.id, s]));
+
+  const sheets: FollowingSheetPayload[] = [];
+  let prevSectionId: string | null = ordered[idx]!.sectionId;
+
+  for (const meta of slice) {
+    const page = pageById.get(meta.pageId);
+    if (!page) continue;
+    const sec = sectionById.get(page.sectionId);
+    if (!sec || sec.notebookId !== notebookId) continue;
+
+    const coords = resolvePageSheetCoords({
+      strokesData: page.strokesData,
+      blocksData: page.blocksData ?? [],
+      pageSize: page.pageSize,
+    });
+
+    const sectionBreak = prevSectionId !== null && meta.sectionId !== prevSectionId;
+
+    sheets.push({
+      pageId: meta.pageId,
+      title: meta.title,
+      sectionTitle: meta.sectionTitle,
+      sectionBreak,
+      backgroundType: page.backgroundType,
+      pageSize: normalizePageSize(page.pageSize ?? undefined),
       strokes: coords.strokes,
       blocks: coords.blocks,
     });

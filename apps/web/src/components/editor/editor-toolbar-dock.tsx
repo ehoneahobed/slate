@@ -53,8 +53,8 @@ function DockBtn({
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border-0 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-        active ? "bg-[var(--ink)] text-[var(--paper)]" : "bg-transparent text-[var(--ink-2)] hover:bg-[var(--chrome-2)]"
+      className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border-0 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        active ? "bg-[var(--ink)] text-[var(--paper)] shadow-sm" : "bg-transparent text-[var(--ink-2)] hover:bg-[color-mix(in_oklch,var(--paper-2)_90%,transparent)]"
       }`}
     >
       {children}
@@ -67,11 +67,11 @@ function Divider() {
 }
 
 const dockShell =
-  "pointer-events-auto flex max-h-[min(520px,calc(100vh-120px))] flex-col items-center gap-0.5 overflow-y-auto overflow-x-hidden rounded-[14px] border border-[var(--chrome-b)] p-1.5 shadow-[var(--shadow-2)]";
+  "pointer-events-auto flex max-h-[min(520px,calc(100vh-120px))] flex-col items-center gap-0.5 overflow-y-auto overflow-x-hidden rounded-full border border-[color-mix(in_oklch,var(--chrome-b)_85%,var(--rule))] px-1 py-2 shadow-[var(--shadow-2)]";
 
 const dockStyle = {
-  background: "color-mix(in oklch, var(--chrome) 88%, transparent)",
-  backdropFilter: "blur(16px) saturate(140%)",
+  background: "color-mix(in oklch, var(--paper) 92%, transparent)",
+  backdropFilter: "blur(14px) saturate(130%)",
 } as const;
 
 /** Left vertical glass dock + fly-out — `src/toolbar.jsx` / Whiteboard prototype. */

@@ -131,7 +131,17 @@ export function editableRootToSegments(root: HTMLElement, block: PageBlockText, 
     }
   }
 
-  for (const c of root.childNodes) {
+  const children = Array.from(root.childNodes);
+  for (let i = 0; i < children.length; i++) {
+    const c = children[i];
+    if (i > 0) {
+      const prev = children[i - 1];
+      const isBlockish = (n: ChildNode) =>
+        n.nodeType === Node.ELEMENT_NODE &&
+        ["DIV", "P", "LI", "UL", "OL", "H1", "H2", "H3", "H4", "H5", "H6"].includes((n as HTMLElement).tagName);
+      /** Enter in Chrome inserts sibling `div`s; `walk` alone would concatenate lines with no `\n`. */
+      if (isBlockish(c) || isBlockish(prev)) pushText("\n", null);
+    }
     walk(c, null);
   }
 

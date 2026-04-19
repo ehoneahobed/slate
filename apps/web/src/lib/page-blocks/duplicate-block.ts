@@ -31,8 +31,24 @@ export function duplicatePageBlock(block: PageBlock): PageBlock {
   if (block.kind === "youtube") {
     return { ...block, ...rect };
   }
+  if (block.kind === "image") {
+    return { ...block, ...rect };
+  }
+  if (block.kind === "sticky") {
+    return { ...block, ...rect };
+  }
+  if (block.kind === "math" || block.kind === "code") {
+    return { ...block, ...rect };
+  }
+  if (block.kind === "web_embed") {
+    return { ...block, ...rect };
+  }
+  if (block.kind === "file_card") {
+    return { ...block, ...rect };
+  }
   if (block.kind === "rect" || block.kind === "ellipse" || block.kind === "diamond") {
     return { ...block, ...rect };
   }
-  return { ...block, ...rect };
+  const _exhaustive: never = block;
+  return _exhaustive;
 }

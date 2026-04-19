@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { loadNotebookOutline } from "@/lib/notebook/outline";
+import { notFound, redirect } from "next/navigation";
+import { ShareOutlineAside } from "@/components/share/share-outline-aside";
+import { firstPageIdInNotebookOrder, loadNotebookOutline, outlineNotebookStats } from "@/lib/notebook/outline";
 import { resolveActiveShareLink } from "@/lib/share/resolve";
 
 export default async function SharedNotebookTocPage({ params }: { params: Promise<{ token: string }> }) {
@@ -13,35 +14,45 @@ export default async function SharedNotebookTocPage({ params }: { params: Promis
   if (!tree) notFound();
 
   const basePath = `/share/${encodeURIComponent(rawToken)}`;
+  const firstId = firstPageIdInNotebookOrder(tree.outline);
+  if (firstId) {
+    redirect(`${basePath}/pages/${firstId}`);
+  }
+
+  const stats = outlineNotebookStats(tree.outline);
 
   return (
-    <main className="space-y-6">
-      <div>
-        <h1 className="font-[family-name:var(--font-instrument-serif)] text-3xl leading-tight">{tree.notebookTitle}</h1>
-        <p className="mt-2 text-sm text-[var(--ink-3)]">Read-only · pick a page below</p>
-      </div>
-
-      <div className="rounded-[var(--r-lg)] border border-[var(--rule)] bg-[var(--paper)] p-4">
-        <h2 className="text-sm font-semibold text-[var(--ink-2)]">Sections & pages</h2>
-        <ul className="mt-3 space-y-2 text-sm">
-          {tree.outline.map((s) => {
-            const nav = [...s.pages].sort((a, b) => a.position - b.position);
-            return (
-              <li key={s.id} className="rounded-md border border-[var(--chrome-b)] bg-[var(--paper-2)] p-3">
-                <div className="font-medium">{s.title}</div>
-                <ul className="mt-2 space-y-1 text-[var(--ink-2)]">
-                  {nav.map((p) => (
-                    <li key={p.id}>
-                      <Link className="font-medium text-[var(--ink)] hover:underline" href={`${basePath}/pages/${p.id}`}>
-                        {p.title}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            );
-          })}
-        </ul>
+    <main className="flex min-h-dvh w-full flex-col bg-[var(--paper-2)] lg:flex-row">
+      <ShareOutlineAside
+        notebookTitle={tree.notebookTitle}
+        outline={tree.outline}
+        basePath={basePath}
+        currentPageId={null}
+        stats={stats}
+      />
+      <div className="relative min-w-0 flex-1 lg:pl-72">
+        <header className="border-b border-[var(--chrome-b)] bg-[color-mix(in_oklch,var(--paper)_82%,var(--paper-2))] px-5 py-8 lg:px-12 lg:py-10">
+          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--ink-3)]">Shared notebook</p>
+          <h1 className="mt-2 max-w-3xl font-[family-name:var(--font-instrument-serif)] text-3xl leading-[1.08] text-[var(--ink)] sm:text-4xl">
+            {tree.notebookTitle.trim() || "Notebook"}
+          </h1>
+          <p className="mt-4 text-sm text-[var(--ink-2)]">
+            {stats.sectionCount} {stats.sectionCount === 1 ? "section" : "sections"} · {stats.pageCount}{" "}
+            {stats.pageCount === 1 ? "page" : "pages"}
+          </p>
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[var(--ink-3)]">
+            This notebook does not have any pages yet. Ask the owner to add a page, or check back later.
+          </p>
+        </header>
+        <div className="mx-auto max-w-[min(1180px,100%)] px-5 py-10 lg:px-10">
+          <p className="text-sm text-[var(--ink-2)]">
+            Need an empty section removed?{" "}
+            <Link className="font-semibold text-[var(--ink)] underline-offset-2 hover:underline" href="/">
+              Open Slate
+            </Link>{" "}
+            to edit your own notebooks.
+          </p>
+        </div>
       </div>
     </main>
   );

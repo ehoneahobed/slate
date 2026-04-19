@@ -2,7 +2,7 @@
 
 This document is the **single source of truth** for building Slate from the current HTML/JSX prototypes toward a **production web app** plus **PWA** and **Tauri** (later). It encodes decisions already made and the phased plan to execute.
 
-**Prototype references (existing repo):**
+**Prototype references (existing repo):** there are no separate raster “prototype images”; visuals are HTML/CSS (e.g. `landing.html` hero) plus the interactive **`Whiteboard.html`** shell and **`src/*.jsx`** modals/inspector.
 
 - `landing.html` — marketing narrative & feature surface
 - `Whiteboard.html`, `src/*` — app shell: spine, canvas area, toolbar, inspector, modals
@@ -11,31 +11,47 @@ This document is the **single source of truth** for building Slate from the curr
 
 ---
 
+## Near-term focus (updated)
+
+Until the **solo notebook + whiteboard** experience is *best-in-class*, execution prioritizes:
+
+- **You** as the primary user: learning, prep, and **livestream as a personal board** (one writer, no classroom assumptions).
+- **Rich pages**: ink, structure, and **embeds** (math, code, media, PDFs, etc.) working reliably—not a thin sketch app.
+- **Polish**: stylus, scrolling, focus, performance, and persistence—not feature breadth for distribution.
+
+**Explicitly deferred for this milestone:** multi-user collaboration, student/teacher workflows, rostering, private annotation forks, Liveblocks rooms, and “share as a product” beyond whatever already exists for your own testing. Those specs stay in this document (§1.8, §5–§7, deferred roadmap track) but **do not block** embed and whiteboard work.
+
+---
+
 ## 1. Product definition
 
-Slate is a **notebook-first whiteboard for teachers**.
+Slate is a **notebook-first whiteboard**: structured notes plus an infinite-quality drawing surface. The original positioning emphasized teachers and classrooms; the **current execution priority** is the **personal power-user** path described above, then classroom/distribution features.
 
 ### 1.1 Core hierarchy
 
 - **Notebook → Section → Page** (OneNote-style spine)
-- **Vertical, book-like scrolling** across pages (stacked mode) plus optional linear navigation (prototype already explores this via tweaks)
+- **Vertical, book-like scrolling** across pages (“following” sheets under the active page) plus section/page navigation from the notebook overview
 
-### 1.2 Teaching surface
+### 1.2 Surface capabilities — **implemented** (`apps/web`)
+
+The live app today (verify in `apps/web`; types in `lib/page-blocks/types.ts`):
+
+- **Ink:** pen, highlighter, eraser; debounced persist to Postgres (`pages.strokesData`); documented stroke shape in [`STROKE_SCHEMA_V1.md`](STROKE_SCHEMA_V1.md).
+- **Canvas tools:** laser, pan/move, select, text tool; rough **shapes** (rectangle, ellipse, diamond) with stroke/fill and hand-drawn rendering.
+- **Page:** backgrounds **ruled / grid / plain / Cornell**; **page sizes** `16_10`, `a4`, `letter`, `infinite` (schema + editor).
+- **Blocks on page:** **text** (multi-font, segment-level styling), **YouTube** embeds (video id + frame), **image** blocks (`https` URL src), rough shapes as blocks.
+- **Notebook OS:** workspaces, notebooks, sections, pages; CRUD; reorder pages within a section; delete page (guarded when last in notebook).
+- **Vertical continuation:** following pages in the same section load below the editor; each sheet is **editable** with the same tools (focus model for undo/shortcuts).
+- **Themes:** warm paper / clean / dark via `user_settings`, applied at document root.
+- **Focus mode** (hide chrome) and **student preview** (read-only canvas state)—useful for checking how a stream audience might see the board; not collaboration.
+- **Export path today:** browser **Print → Save as PDF** from the editor (not async server export).
+
+**Gaps vs “best in class” (near-term backlog):** Pointer Events **pressure** is not yet wired through ink width; many **embed types** from the product vision are still missing (see §8.1). Insert/slash flows and dock actions should consistently target the **actively focused** sheet (primary vs following page).
+
+### 1.3 Target surface (full vision — not all shipped)
 
 - **Pressure-sensitive ink** (web: Pointer Events `pressure` where available; fallbacks where not)
-- **Page backgrounds:** ruled, grid, plain, **Cornell** (after plain if sequencing matters for MVP)
-- **Embeds:** images, video, YouTube/Vimeo, audio, PDF, code, math (LaTeX), tables, stickies, links to pages
-- **Three sharing modes**
-  1. **Read-only** — like a shared PDF; anonymous allowed (token + optional passcode)
-  2. **Read + private annotations** — **sign-in required**; student ink on a private overlay/fork; never mutates teacher base content
-  3. **Live collaboration** — **sign-in required**; realtime multi-user board; teacher can end/revoke session
-
-### 1.3 Teacher / class workflows
-
-- **Student preview** (teacher views as student)
-- **Focus mode** (hide chrome)
-- **Voice narration** per page (publish + replay) — post-MVP phase in this plan
-- **PDF export** (print fidelity) — phased; `design-system-print.html` informs CSS
+- **Embeds (target set):** uploaded images and files, **video files**, **YouTube + Vimeo**, **audio** (record + playback), **PDF** on canvas, **code** blocks, **KaTeX / LaTeX**, **tables**, **stickies**, **internal links** to pages—plus drag/drop and signed URL uploads where blobs are large
 
 ### 1.4 Themes
 
@@ -44,9 +60,28 @@ Slate is a **notebook-first whiteboard for teachers**.
 ### 1.5 AI (BYOK)
 
 - Optional; teacher-provided keys; server-side proxy; metering; **off by default** until keys + policy exist
-- Student-facing AI should be **policy-gated** (org/teacher toggles)
+- Org/teacher policy gates when student-facing—**out of scope** until the core notebook milestone
 
-### 1.6 Explicit non-goals (initial releases)
+### 1.6 Voice & narration
+
+- **Voice narration** per page (publish + replay) — post–core-notebook phase in this plan
+
+### 1.7 PDF export (production-grade)
+
+- **Async export** and print CSS aligned with `design-system-print.html` — after the core writing experience is solid; browser print remains the interim
+
+### 1.8 Deferred: classroom, sharing modes, and collaboration (spec retained)
+
+When distribution matters again, the product still intends:
+
+- **Three sharing modes**
+  1. **Read-only** — like a shared PDF; anonymous allowed (token + optional passcode)
+  2. **Read + private annotations** — sign-in required; student ink on a private overlay/fork
+  3. **Live collaboration** — sign-in required; realtime board; teacher end/revoke
+
+Schema today includes `share_link` with a `mode` column; **read-only sharing routes exist** for early testing—full Phase 2–4 delivery stays **after** §8.1 exit criteria.
+
+### 1.9 Explicit non-goals (initial releases)
 
 - **Stripe / billing** — deferred; keep `plan` flags + usage counters so billing is easy later
 - **Multi-teacher co-ownership** — deferred; single `ownerUserId` initially; add `notebook_members` later without rewriting hierarchy
@@ -60,6 +95,8 @@ Slate is a **notebook-first whiteboard for teachers**.
 | Area | Decision |
 |------|-----------|
 | Web framework | **Next.js** (App Router, TypeScript strict) |
+| ORM (implemented) | **Drizzle** + `drizzle-kit` push workflow |
+| Auth (implemented) | **Better Auth** (see §6.1) |
 | Primary database | **PostgreSQL** (relational hierarchy + permissions + audit) |
 | DB hosting | **Neon** acceptable; **AWS RDS** (or Lightsail-managed Postgres) if “all in AWS” is required |
 | App hosting | **AWS Lightsail Containers** (Next.js server + routes) |
@@ -127,7 +164,7 @@ Keep business logic out of Tauri; Tauri is a shell.
 
 ## 5. Data model (Postgres) — v1 entities
 
-Names are indicative; migrate with Prisma or Drizzle.
+Names are indicative; **`apps/web` uses Drizzle** (Prisma remains a valid alternative for other codebases).
 
 ### 5.1 Core
 
@@ -161,14 +198,10 @@ Names are indicative; migrate with Prisma or Drizzle.
 
 ## 6. Auth model
 
-### 6.1 Providers
+### 6.1 Providers (**implemented**)
 
-Choose **one** early and stick to it:
-
-- **Auth.js (NextAuth)** + Postgres adapter, or
-- **Clerk** (managed, faster ops)
-
-This plan does not mandate which; implementation picks one in Phase 0.
+- **`apps/web` uses [Better Auth](https://www.better-auth.com/)** with Drizzle-backed tables (email/password and OAuth providers as configured in env)—this supersedes the earlier “Auth.js vs Clerk” open choice for the current codebase.
+- Adding Clerk later would be a product decision, not required for the notebook milestone.
 
 ### 6.2 Authorization primitives
 
@@ -181,6 +214,8 @@ This plan does not mandate which; implementation picks one in Phase 0.
 ---
 
 ## 7. Liveblocks integration specification
+
+**Execution:** not started in `apps/web`. This section remains the **target spec** for when collaboration returns to the roadmap (after §8.1). Checkpointing rules still apply whenever Liveblocks ships.
 
 ### 7.1 Packages (expected)
 
@@ -279,152 +314,87 @@ NEXT_PUBLIC_APP_URL=https://...
 
 ## 8. Phased roadmap (execution order)
 
-### Phase 0 — Foundations (1–2 weeks)
+Roadmap is split into **(A) the active “solo notebook + whiteboard” track**, then **retro status** for early phases, then a **deferred distribution/collaboration track** unchanged in intent.
 
-**Deliverables**
+### 8.1 Current priority — Notebook & whiteboard excellence (solo)
 
-- Next.js + TS strict + lint/format + test runner baseline
-- Postgres + migrations (Prisma or Drizzle)
-- Auth working in dev + staging
-- Design tokens ported from `design-system.html` into the app theme layer
-- CI: typecheck + tests on PR
+Goal: **best-in-class** personal notetaking + whiteboard for deep work and **livestream as your only board**—before classroom or realtime features.
 
-**Exit criteria**
+#### A — Embeds & rich page content (primary backlog)
 
-- Signed-in user can create a notebook and see empty spine + one page
+**Already in app:** text blocks (fonts + segments), YouTube blocks, image blocks via `https` URL, rough shapes.
 
----
+**Recommended build order** (tune for what blocks your streams first):
 
-### Phase 1 — Notebook OS + single-player ink (2–4 weeks)
+1. **Image uploads** — drag/drop and picker, **S3/R2-compatible signed URLs**, persist `src` to your bucket (stop relying on hotlink-only URLs).
+2. **Math / LaTeX** — KaTeX (inline + block), persisted as a block type; export/print considerations documented when added.
+3. **Code blocks** — syntax highlight, monospace layout, language label; persisted block type.
+4. **Tables** — simple grid first (rows/columns, cell text); merge styling later if needed.
+5. **Stickies** — lightweight colored note blocks (prototype parity).
+6. **Vimeo** — extend embed parser or separate block kind alongside YouTube.
+7. **Video file** — upload + signed URL + `<video>` block (or embed wrapper).
+8. **Audio** — attach clip or record-in-browser (storage + waveform UI can trail playback).
+9. **PDF** — viewer region on page; pan/zoom; optional ink layer relationship (annotation mapping is harder—phase if needed).
+10. **Link to page** — internal jump within notebook (and cross-notebook later).
 
-**Deliverables**
+**Cross-cutting for A:** insert menu and `/` command should add blocks to the **focused** page (primary or a following sheet); CSP updated as new iframe/script origins appear.
 
-- CRUD + reorder for notebooks, sections, pages
-- Page backgrounds: ruled / grid / plain (Cornell next if prioritized)
-- Themes: warm / clean / night
-- Focus mode + student preview as UI states
-- Ink MVP: pen / highlighter / eraser; persist strokes to Postgres on debounced autosave
-- Stroke JSON schema documented in code (`packages/ink-schema` optional)
+**Exit criteria (8.1):** You can assemble pages comparable to the **richest `Whiteboard.html` / `InsertModal` mock** for the types you personally need weekly, with stable autosave and no “second app” for math/code/PDF reference.
 
-**Exit criteria**
+#### B — Ink & input polish
 
-- Teacher can build a semester notebook structure and draw on pages; refresh restores content
+- Pointer Events **`pressure` → stroke width** (and sensible fallback for mice).
+- Eraser + highlighter edge cases, large stroke counts, and **stylus/tablet** scrolling quirks on chrome layers (`touch-action`, focus).
+- Toolbar/dock parity when a **following** page has focus (undo depth, text styling, insert routing—complete any remaining gaps).
 
----
+#### C — Notebook shell & navigation
 
-### Phase 2 — Read-only publishing (2–3 weeks)
+- Notebook overview / TOC: scrolling, reorder, delete—continue hardening for pen + keyboard.
+- Search (titles first; full-text later) when notebook count grows.
+- Optional: pinned notebooks, templates—after core content types land.
 
-**Deliverables**
+#### D — Solo reliability
 
-- `share_links` with rotation + revocation + optional passcode
-- Public read route: `/share/[token]` SSR/ISR strategy chosen and documented
-- Watermark optional
-
-**Exit criteria**
-
-- Anonymous student can open read-only notebook reliably; permissions enforced on every API
-
----
-
-### Phase 3 — Private annotations fork (3–5 weeks)
-
-**Deliverables**
-
-- Signed-in student overlay/fork model tied to base `page_revision`
-- UX clearly distinguishes teacher vs student ink
-- Teacher updates base → student sees update; private overlay preserved per defined rules
-
-**Exit criteria**
-
-- Mode B works end-to-end under basic concurrency tests
+- CI on PR (typecheck + lint + tests) if not already enforced in your remote.
+- Staging deploy path when you leave pure-local dev.
+- Backup/export story: browser print today; **async PDF** (old Phase 6) after 8.1 feels solid.
 
 ---
 
-### Phase 4 — Live collaboration with Liveblocks (4–8 weeks)
+### 8.2 Phase 0 — Foundations — **largely complete** in repo
 
-**Deliverables**
-
-- `live_sessions` + room key strategy
-- Liveblocks `RoomProvider` integrated only in live mode UI
-- Token endpoint + authorization hardening + rate limits
-- Checkpoint pipeline to Postgres + failure visibility
-- Teacher controls: end session, revoke tokens
-
-**Exit criteria**
-
-- Classroom-scale test (define target: e.g. 20–50 concurrent users) meets latency UX bar you set (document p95 targets per region)
+| Deliverable | Status |
+|-------------|--------|
+| Next.js App Router + TypeScript strict | Done (`apps/web`) |
+| Postgres + migrations | Done (**Drizzle** + `db:push` workflow; see README) |
+| Auth in dev | Done (**Better Auth**; configure providers in env) |
+| Design tokens from prototypes | Partial—ongoing alignment with `design-system.html` |
+| CI: typecheck + tests on PR | **Open** (wire in your host; scripts exist in `package.json`) |
 
 ---
 
-### Phase 5 — Embeds & rich content (rolling, 3–6+ weeks)
+### 8.3 Phase 1 — Notebook OS + single-player ink — **substantially complete**
 
-**Priority order (recommended)**
-
-1. Images + drag/drop + uploads (signed URLs)
-2. Stickies + text blocks
-3. Code blocks + KaTeX math
-4. YouTube/Vimeo embeds
-5. Audio recording + playback
-6. PDF viewer + annotation mapping
-
-**Exit criteria**
-
-- Teacher can assemble pages comparable to the richest prototype pages
+Deliverables from the original Phase 1 are mostly shipped (see §1.2). Remaining work is captured in **§8.1–8.1D** (embeds, pressure ink, focus routing, CI)—not a separate “Phase 1b” document.
 
 ---
 
-### Phase 6 — PDF export (2–4 weeks)
+### 8.4 Deferred track — Publishing, annotations, collaboration, platform (unchanged intent)
 
-**Deliverables**
+Execute **after** §8.1 exit criteria. Specs remain in §5–§7 and below.
 
-- Async export jobs (queue) — **do not** block Lightsail web container on Chromium PDF
-- Worker container or external job runner
-- Print CSS aligned with `design-system-print.html`
+| Original phase | Summary |
+|----------------|---------|
+| **Phase 2** — Read-only publishing | `share_links` rotation/revocation/passcode, public read hardening, watermark, ISR strategy |
+| **Phase 3** — Private annotation forks | Student overlay model + revision rules |
+| **Phase 4** — Live collaboration | Liveblocks rooms, tokens, checkpoints, teacher controls |
+| **Phase 6** — Async PDF export | Worker + queue + `design-system-print.html` alignment |
+| **Phase 7** — BYOK AI | Proxy, quotas, key storage |
+| **Phase 8** — Voice narration | Per-page audio |
+| **Phase 9** — PWA | Manifest, SW, offline shell |
+| **Phase 10** — Tauri | Desktop shell |
 
-**Exit criteria**
-
-- Export reproduces backgrounds + ink for a representative notebook
-
----
-
-### Phase 7 — BYOK AI (3–5 weeks)
-
-**Deliverables**
-
-- Encrypted key storage (envelope/KMS pattern documented in implementation)
-- Proxy route to providers; quotas; audit counts
-- “Ask Slate” grounded on page selection / extracted text pipeline
-
-**Exit criteria**
-
-- Teacher can enable AI with key; students cannot extract keys; org policy can disable
-
----
-
-### Phase 8 — Voice narration (3–6 weeks)
-
-**Deliverables**
-
-- Audio capture, storage, waveform UI, replay permissions
-
----
-
-### Phase 9 — PWA hardening (1–2 weeks, parallel)
-
-**Deliverables**
-
-- `manifest.webmanifest`, icons, service worker strategy (Serwist / next-pwa)
-- Offline shell + explicit limitations UX
-
----
-
-### Phase 10 — Tauri desktop (2–4 weeks)
-
-**Deliverables**
-
-- Thin shell loading production web app
-- Deep links to notebook/page
-- Auto-update later
+**Note:** Original “Phase 5 (embeds)” is **merged into §8.1A** as the active priority—not after collaboration.
 
 ---
 
@@ -447,14 +417,17 @@ NEXT_PUBLIC_APP_URL=https://...
 
 ---
 
-## 11. Immediate next tasks (Definition of Ready for Phase 0)
+## 11. Immediate next tasks (notebook milestone)
 
-1. Choose **Auth.js vs Clerk** and document in ADR (one-page).
-2. Choose **ORM**: Prisma vs Drizzle (one-page ADR).
-3. Create **Neon/RDS** dev database + migration workflow.
-4. Extract **design tokens** from `design-system.html` into the Next app theme.
-5. Draft **stroke JSON schema v1** in `/docs/STROKE_SCHEMA_V1.md` (small follow-up doc).
-6. Create **Lightsail staging** environment + secrets + CI deploy path.
+Aligned with **§8.1** (not Phase 0 auth/ORM discovery—those choices are made).
+
+1. **Image upload pipeline** — presigned PUT/POST to object storage, persist stable URLs in `image` blocks; drag/drop on canvas.
+2. **KaTeX block** — block schema + renderer + editor affordance (inline vs block equations as you prefer).
+3. **Code block** — block schema + highlighter + monospace layout.
+4. **Wire insert + `/` to active page** — primary vs following sheet focus (toolbar, dock, slash).
+5. **Ink pressure** — map `PointerEvent.pressure` into stroke width curve; document behavior in `STROKE_SCHEMA_V1.md` if point format changes.
+6. **CI** — GitHub Actions (or equivalent): `typecheck`, `lint`, `test` for `apps/web` on each PR.
+7. **Staging + Neon** (when ready) — optional before solo use is perfect; required before public beta.
 
 ---
 
@@ -462,23 +435,22 @@ NEXT_PUBLIC_APP_URL=https://...
 
 - **Checkpoint** — persist Liveblocks session state into durable storage controlled by Slate
 - **BYOK** — bring your own API key (teacher-provided)
-- **Mode A/B/C** — read-only / annotate / live (this document §1.2)
+- **Mode A/B/C** — read-only / annotate / live (this document §1.8)
 
 ---
 
 ## Document control
 
 - **Owner:** engineering lead (you)
-- **Update cadence:** after each phase retrospective
-- **Version:** 1.0 (initial execution plan)
+- **Update cadence:** after each milestone retrospective
+- **Version:** 1.1 — refocus on solo notebook + whiteboard; implementation snapshot; deferred collaboration track
 
-### Phase 0 implementation (repo)
-
-Execution has started. See:
+### Implementation snapshot (`apps/web`)
 
 - **[`README.md`](../README.md)** — local Postgres (`docker compose`), env vars, `db:push`, dev server
-- **`apps/web/`** — Next.js (App Router) + Drizzle schema + Auth.js (GitHub) + dashboard notebook CRUD smoke test
-
-Stroke schema: [`docs/STROKE_SCHEMA_V1.md`](STROKE_SCHEMA_V1.md).
-
-**Phase 1 (in progress in repo):** page editor route, Postgres-backed ink (`strokesData`), themes (`user_settings`), focus/student preview UI, page CRUD + reorder within section.
+- **Stack:** Next.js (App Router) + **Drizzle** + **Better Auth** + dashboard **notebook / section / page** CRUD
+- **Page editor:** backgrounds including **Cornell**, **page sizes** (`16_10`, `a4`, `letter`, `infinite`), ink autosave to **`strokesData`**, blocks in **`blocksData`** (text, YouTube, `https` image, rough shapes)
+- **Tools:** laser, move/pan, select, text, shapes; **following pages** in the section editable below the current page
+- **Themes:** `user_settings` → `data-theme` on `<html>`
+- **Stroke schema:** [`docs/STROKE_SCHEMA_V1.md`](STROKE_SCHEMA_V1.md)
+- **Share:** basic **`/share/[token]`** read path + `share_link` table exist for early use; **not** the current execution focus (see §8.4)

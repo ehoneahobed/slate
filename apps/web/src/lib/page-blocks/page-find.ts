@@ -28,6 +28,39 @@ export function buildPageFindMatches(title: string, blocks: PageBlock[], rawQuer
   }
 
   for (const b of blocks) {
+    if (b.kind === "sticky") {
+      const plain = b.text ?? "";
+      if (!plain.toLowerCase().includes(lowerNeedle)) continue;
+      out.push({
+        id: b.id,
+        target: "block",
+        blockId: b.id,
+        snippet: snippetAround(plain, needle),
+      });
+      continue;
+    }
+    if (b.kind === "math") {
+      const plain = b.latex ?? "";
+      if (!plain.toLowerCase().includes(lowerNeedle)) continue;
+      out.push({
+        id: b.id,
+        target: "block",
+        blockId: b.id,
+        snippet: snippetAround(plain, needle),
+      });
+      continue;
+    }
+    if (b.kind === "code") {
+      const plain = `${b.filename ?? ""}\n${b.code ?? ""}`;
+      if (!plain.toLowerCase().includes(lowerNeedle)) continue;
+      out.push({
+        id: b.id,
+        target: "block",
+        blockId: b.id,
+        snippet: snippetAround(plain, needle),
+      });
+      continue;
+    }
     if (b.kind !== "text") continue;
     const plain = segmentsPlainText(getTextSegments(b));
     if (!plain.toLowerCase().includes(lowerNeedle)) continue;

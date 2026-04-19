@@ -1,7 +1,10 @@
+import { and, eq, isNull } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { getSession } from "@/auth";
 import { PageEditorClient } from "@/components/editor/page-editor-client";
 import { getPageContextForOwner } from "@/lib/access/page";
+import { db } from "@/lib/db";
+import { shareLinks } from "@/lib/db/schema";
 import { loadFollowingSheets } from "@/lib/notebook/following-sheets";
 import { loadNotebookOutline } from "@/lib/notebook/outline";
 import { getUserTheme } from "@/lib/user-settings";
@@ -24,6 +27,15 @@ export default async function NotebookPageEditor({
   if (!tree) notFound();
 
   const following = await loadFollowingSheets(notebookId, tree.outline, pageId, session.user.id);
+
+  const activeShareLinks = await db
+    .select({
+      id: shareLinks.id,
+      mode: shareLinks.mode,
+      createdAt: shareLinks.createdAt,
+    })
+    .from(shareLinks)
+    .where(and(eq(shareLinks.notebookId, notebookId), isNull(shareLinks.revokedAt)));
 
   const serverUiTheme = await getUserTheme(session.user.id);
 
@@ -50,6 +62,7 @@ export default async function NotebookPageEditor({
       serverUiTheme={serverUiTheme}
       followingSheets={following.sheets}
       followingSheetsMoreCount={following.moreCount}
+      activeShareLinks={activeShareLinks}
     />
   );
 }

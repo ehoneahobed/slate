@@ -17,7 +17,16 @@ import {
   snapBlockSizeLegacy,
   snapBlockSizeWorld,
 } from "@/lib/page-blocks/block-snap";
-import type { BlocksCoordSpace, PageBlock, PageBlockRect, PageBlockText, PageRoughShapeKind, PageTextFontId } from "@/lib/page-blocks/types";
+import type {
+  BlocksCoordSpace,
+  PageBlock,
+  PageBlockRect,
+  PageBlockSticky,
+  PageBlockText,
+  PageRoughShapeKind,
+  PageStickyTint,
+  PageTextFontId,
+} from "@/lib/page-blocks/types";
 import { isPageRoughShapeBlock } from "@/lib/page-blocks/types";
 import { sheetWorldFromClientRect, sheetWorldUyMax } from "@/lib/page-blocks/world-sheet-coords";
 import {
@@ -37,6 +46,7 @@ import {
   notebookTextStyle,
   pageTextFontStack,
 } from "@/lib/page-blocks/text-typography";
+import { CodeEmbedBody, MathBlockHtml } from "@/components/page-content/embed-content";
 import { RoughRectCanvas } from "@/components/page-content/rough-rect-canvas";
 
 export type PageBlocksChangeOpts = { recordHistory?: boolean };
@@ -65,6 +75,8 @@ type Props = {
   shapeDrawKind?: PageRoughShapeKind;
   /** Ink surface root — same rect as StrokeCanvas `worldNormRootRef` for identical world `(nx, uy)`. */
   sheetWorldRef?: RefObject<HTMLElement | null>;
+  /** When false, grid snap is off unless Shift is held (inverted from default). */
+  snapToGridEnabled?: boolean;
 };
 
 function replaceOne(blocks: PageBlock[], id: string, updated: PageBlock): PageBlock[] {
@@ -97,13 +109,42 @@ function syncTextBlockHeight(
   const pageW = r.width;
   if (pageH < 8 || pageW < 8) return;
   const uyMax = pageH / pageW;
-  const nh =
+  const cap = layoutCoordSpace === "world-v2" ? Math.max(0, uyMax - b.y) : 0.98;
+  const fromContent =
     layoutCoordSpace === "world-v2"
-      ? Math.min(Math.max(0, uyMax - b.y), Math.max(0.045, contentEl.scrollHeight / pageW))
-      : Math.min(0.98, Math.max(0.045, contentEl.scrollHeight / pageH));
+      ? Math.max(0.045, contentEl.scrollHeight / pageW)
+      : Math.max(0.045, contentEl.scrollHeight / pageH);
+  const nh = Math.min(cap, Math.max(fromContent, b.h));
   if (Math.abs(nh - b.h) < 0.004) return;
   const next = replaceOne(currentBlocks, b.id, { ...b, h: nh });
   onBlocksChange(next, { recordHistory: false });
+}
+
+/**
+ * Sticky height from DOM (content + chrome). Never shrinks below `b.h` so a manual resize larger than
+ * the text box is preserved; content can still force growth past `b.h`.
+ */
+function measureStickyWorldH(
+  wrapEl: HTMLDivElement,
+  stickyOuterEl: HTMLDivElement,
+  b: PageBlockSticky,
+  layoutCoordSpace: BlocksCoordSpace,
+): number | null {
+  const r = wrapEl.getBoundingClientRect();
+  const pageH = r.height;
+  const pageW = r.width;
+  if (pageH < 8 || pageW < 8) return null;
+  const uyMax = pageH / pageW;
+  const rawScroll = stickyOuterEl.scrollHeight;
+  const cap = layoutCoordSpace === "world-v2" ? Math.max(0, uyMax - b.y) : 0.98;
+  const fromContent =
+    layoutCoordSpace === "world-v2" ? Math.max(0.045, rawScroll / pageW) : Math.max(0.045, rawScroll / pageH);
+  return Math.min(cap, Math.max(fromContent, b.h));
+}
+
+/** Serialize sticky `contentEditable` including line breaks from Enter (block `div`s / `innerText`). */
+function stickyEditorPlainText(root: HTMLElement): string {
+  return (root.innerText ?? "").replace(/\r\n/g, "\n").slice(0, 4000);
 }
 
 function blockFrameStyle(b: PageBlock, layoutCoordSpace: BlocksCoordSpace, cw: number, ch: number) {
@@ -275,7 +316,20 @@ function TextSelectionBubble({
   );
 }
 
-/** Text, image, and YouTube blocks — sit above ink while Select/Text so notes stay clickable. */
+function stickyTintStyle(tint: PageStickyTint): CSSProperties {
+  switch (tint) {
+    case "pink":
+      return { background: "linear-gradient(180deg,#fbcfe8 0%,#fdf2f8 100%)", boxShadow: "2px 3px 0 rgba(60,20,40,.12)" };
+    case "blue":
+      return { background: "linear-gradient(180deg,#93c5fd 0%,#eff6ff 100%)", boxShadow: "2px 3px 0 rgba(20,40,80,.12)" };
+    case "green":
+      return { background: "linear-gradient(180deg,#86efac 0%,#f0fdf4 100%)", boxShadow: "2px 3px 0 rgba(20,60,30,.12)" };
+    default:
+      return { background: "linear-gradient(180deg,#fde047 0%,#fefce8 100%)", boxShadow: "2px 3px 0 rgba(80,60,10,.15)" };
+  }
+}
+
+/** Text, image, YouTube, stickies, and embeds — sit above ink while Select/Text so notes stay clickable. */
 export function PageBlocksLayer({
   blocks,
   onBlocksChange,
@@ -292,15 +346,21 @@ export function PageBlocksLayer({
   onShapeDrawCommit,
   shapeDrawKind = "rect",
   sheetWorldRef,
+  snapToGridEnabled = true,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<DragSession | null>(null);
   const ceRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const stickyCeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const stickyRootRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastHydratedTextId = useRef<string | null>(null);
+  const lastHydratedStickyId = useRef<string | null>(null);
   const textInputRaf = useRef<number | undefined>(undefined);
+  const stickyInputRaf = useRef<number | undefined>(undefined);
   const [preview, setPreview] = useState<PageBlock[] | null>(null);
   const [dragging, setDragging] = useState(false);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [editingStickyId, setEditingStickyId] = useState<string | null>(null);
   const [sheetGeo, setSheetGeo] = useState({ cw: 1, ch: 1 });
   /** Live bounds while dragging a new rectangle (`tool === "shapes"`). */
   const [rectDragDraft, setRectDragDraft] = useState<Pick<PageBlockRect, "x" | "y" | "w" | "h"> | null>(null);
@@ -338,9 +398,28 @@ export function PageBlocksLayer({
 
   useEffect(() => {
     if (tool === "text" || tool === "select") return;
-    const t = window.setTimeout(() => setEditingTextId(null), 0);
+    const t = window.setTimeout(() => {
+      setEditingTextId(null);
+      setEditingStickyId(null);
+    }, 0);
     return () => window.clearTimeout(t);
   }, [tool]);
+
+  useEffect(() => {
+    if (!editingStickyId) return;
+    if (!blocks.some((b) => b.id === editingStickyId && b.kind === "sticky")) {
+      queueMicrotask(() => setEditingStickyId(null));
+    }
+  }, [blocks, editingStickyId]);
+
+  useEffect(() => {
+    if (!editingTextId) return;
+    queueMicrotask(() => setEditingStickyId(null));
+  }, [editingTextId]);
+
+  useEffect(() => {
+    if (editingStickyId) onEditingTextIdChange?.(null);
+  }, [editingStickyId, onEditingTextIdChange]);
 
   useEffect(() => {
     if (!pendingTextEditId) return;
@@ -384,6 +463,44 @@ export function PageBlocksLayer({
       lastHydratedTextId.current = editingTextId;
     }
   }, [editingTextId, displayBlocks, pageBackgroundType]);
+
+  useLayoutEffect(() => {
+    if (!editingStickyId) {
+      lastHydratedStickyId.current = null;
+      return;
+    }
+    const el = stickyCeRefs.current.get(editingStickyId);
+    const row = displayBlocks.find((x) => x.id === editingStickyId);
+    if (!el || !row || row.kind !== "sticky") return;
+    if (lastHydratedStickyId.current !== editingStickyId) {
+      el.textContent = row.text;
+      lastHydratedStickyId.current = editingStickyId;
+      el.focus({ preventScroll: true });
+      placeCaretAtEnd(el);
+    }
+  }, [editingStickyId, displayBlocks]);
+
+  /** Keep every sticky’s block `h` in sync with wrapped content (read + edit). Skipped when read-only. */
+  useLayoutEffect(() => {
+    if (readOnly) return;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    let next = displayBlocks;
+    let changed = false;
+    for (const b of displayBlocks) {
+      if (b.kind !== "sticky") continue;
+      const el = stickyRootRefs.current.get(b.id);
+      if (!el) continue;
+      const row = next.find((x) => x.id === b.id);
+      if (!row || row.kind !== "sticky") continue;
+      const nh = measureStickyWorldH(wrap, el, row, layoutCoordSpace);
+      if (nh == null) continue;
+      if (Math.abs(nh - row.h) < 0.004) continue;
+      next = replaceOne(next, b.id, { ...row, h: nh });
+      changed = true;
+    }
+    if (changed) onBlocksChange(next, { recordHistory: false });
+  }, [displayBlocks, editingStickyId, layoutCoordSpace, onBlocksChange, readOnly, selectMode]);
 
   useLayoutEffect(() => {
     if (!editingTextId) return;
@@ -504,7 +621,7 @@ export function PageBlocksLayer({
   }
 
   function finalizeDragRect(kind: DragKind, o: PageBlock, dx: number, dy: number, uyMax: number, shiftKey: boolean): PageBlock {
-    const snap = !shiftKey;
+    const snap = snapToGridEnabled ? !shiftKey : shiftKey;
     if (kind === "move") {
       let x = Math.min(1 - o.w, Math.max(0, o.x + dx));
       let y =
@@ -610,6 +727,7 @@ export function PageBlocksLayer({
       if ((e.target as HTMLElement).closest("[data-text-note-editor]")) return;
       e.stopPropagation();
       onSelectId(b.id);
+      setEditingStickyId(null);
       setEditingTextId(b.id);
       return;
     }
@@ -622,6 +740,7 @@ export function PageBlocksLayer({
     if (b.kind === "text") {
       e.stopPropagation();
       onSelectId(b.id);
+      setEditingStickyId(null);
       setEditingTextId(b.id);
       return;
     }
@@ -737,14 +856,16 @@ export function PageBlocksLayer({
                 color: "var(--ink)",
                 padding: notebookTextPadding(pageBackgroundType),
                 lineHeight: 1.45,
+                whiteSpace: "pre-wrap",
               }
-            : notebookTextStyle(pageBackgroundType, b.fontSizePx ?? null, b.fontFamily ?? null);
+            : { ...notebookTextStyle(pageBackgroundType, b.fontSizePx ?? null, b.fontFamily ?? null), whiteSpace: "pre-wrap" };
           const editingChrome: CSSProperties = {
             color: "var(--ink)",
             padding: notebookTextPadding(pageBackgroundType),
             lineHeight: 1.45,
             overflow: "hidden",
             pointerEvents: "auto",
+            whiteSpace: "pre-wrap",
           };
           /**
            * Text tool: a full-bleed transparent layer (z-0) captures clicks on empty space inside the
@@ -897,6 +1018,7 @@ export function PageBlocksLayer({
                     if (!selectMode && !textToolMode) return;
                     e.stopPropagation();
                     onSelectId(b.id);
+                    setEditingStickyId(null);
                     setEditingTextId(b.id);
                   }}
                 >
@@ -920,6 +1042,189 @@ export function PageBlocksLayer({
                   )}
                 </button>
               )}
+              {selectMode && sel ? (
+                <button
+                  type="button"
+                  data-resize-handle
+                  aria-label="Resize"
+                  title="Resize — hold Shift to turn off grid snap"
+                  className="absolute bottom-0 right-0 z-[2] h-3 w-3 cursor-nwse-resize rounded-br-sm border-l border-t border-[color-mix(in_oklch,var(--accent)_40%,transparent)] bg-[color-mix(in_oklch,var(--paper)_70%,transparent)]"
+                  style={{ pointerEvents: "auto" }}
+                  onPointerDown={(e) => startResize(e, b)}
+                />
+              ) : null}
+            </div>
+          );
+        }
+
+        if (b.kind === "sticky") {
+          const editing = !readOnly && editingStickyId === b.id;
+          const zSticky: CSSProperties = { ...zStack, zIndex: 12 };
+          return (
+            <div
+              key={b.id}
+              ref={(el) => {
+                if (el) stickyRootRefs.current.set(b.id, el);
+                else stickyRootRefs.current.delete(b.id);
+              }}
+              data-page-block-id={b.id}
+              title={selectMode ? "Select tool: drag empty frame or top strip to move. Hold Alt/Option and drag to move from anywhere." : undefined}
+              style={{ ...base, ...zSticky }}
+              className={`relative flex min-h-0 flex-col overflow-hidden ${
+                sel && selectMode
+                  ? "rounded-sm ring-1 ring-[var(--accent)] ring-offset-0"
+                  : "rounded-sm border-0 border-transparent shadow-none"
+              }`}
+              onPointerDown={(e) => {
+                if (readOnly) return;
+                /** Option/Alt + drag moves the note from anywhere (including over the “tap to write” area). */
+                if (selectMode && e.altKey) {
+                  const t = e.target as HTMLElement;
+                  if (t.closest("[data-resize-handle]")) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSelectId(b.id);
+                  startMove(e, b);
+                  return;
+                }
+                if (!selectMode) return;
+                const t = e.target as HTMLElement;
+                if (t.closest("[data-sticky-note-editor]")) return;
+                if (t.closest("[data-sticky-read]")) return;
+                /** Note body (padding around the editor / read surface) is not a drag handle — `closest` only sees ancestors, not the CE child. */
+                if (t.closest("[data-sticky-inner]")) return;
+                if (t.closest("[data-resize-handle]")) return;
+                if (t.closest("[data-drag-handle]")) return;
+                e.stopPropagation();
+                onSelectId(b.id);
+                startMove(e, b);
+              }}
+            >
+              {selectMode && !editing ? (
+                <div
+                  data-drag-handle
+                  title="Drag to move · Option/Alt+drag anywhere on the note"
+                  className="absolute left-0 right-0 top-0 z-[20] min-h-[36px] max-h-[45%] cursor-grab border-b border-[color-mix(in_oklch,var(--ink)_10%,transparent)] bg-[color-mix(in_oklch,var(--accent-2)_14%,transparent)] active:cursor-grabbing"
+                  style={{ pointerEvents: "auto" }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    startMove(e, b);
+                  }}
+                >
+                  <div className="flex h-full items-center justify-between px-2 py-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--ink-3)]">Sticky</span>
+                    <span className="text-[10px] text-[var(--ink-4)]">Alt+drag anywhere</span>
+                  </div>
+                </div>
+              ) : null}
+              <div
+                data-sticky-inner
+                className={`relative z-[1] mx-0.5 flex min-h-0 min-w-0 shrink-0 flex-col rounded-sm border border-[color-mix(in_oklch,var(--ink)_12%,transparent)] p-2.5 ${
+                  !selectMode ? "mt-1" : editing ? "mt-0" : "mt-0 pt-10"
+                }`}
+                style={{ ...stickyTintStyle(b.tint), transform: "rotate(-0.5deg)" }}
+              >
+                {editing ? (
+                  <div
+                    ref={(el) => {
+                      if (el) stickyCeRefs.current.set(b.id, el);
+                      else stickyCeRefs.current.delete(b.id);
+                    }}
+                    data-sticky-note-editor
+                    contentEditable
+                    suppressContentEditableWarning
+                    role="textbox"
+                    aria-multiline
+                    tabIndex={0}
+                    className="min-h-[48px] w-full min-w-0 shrink-0 whitespace-pre-wrap break-words text-[17px] leading-snug text-[var(--ink)] outline-none [overflow-wrap:anywhere]"
+                    style={{ fontFamily: "var(--hand)" }}
+                    onPointerDown={(e) => {
+                      if (selectMode && e.altKey && !readOnly) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onSelectId(b.id);
+                        startMove(e, b);
+                        return;
+                      }
+                      e.stopPropagation();
+                    }}
+                    onInput={() => {
+                      if (stickyInputRaf.current != null) window.cancelAnimationFrame(stickyInputRaf.current);
+                      stickyInputRaf.current = window.requestAnimationFrame(() => {
+                        stickyInputRaf.current = undefined;
+                        const el = stickyCeRefs.current.get(b.id);
+                        if (!el) return;
+                        const row = displayBlocks.find((x) => x.id === b.id && x.kind === "sticky");
+                        if (!row || row.kind !== "sticky") return;
+                        const t = stickyEditorPlainText(el);
+                        const nextB = { ...row, text: t };
+                        onBlocksChange(replaceOne(displayBlocks, b.id, nextB), { recordHistory: false });
+                      });
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const el = stickyCeRefs.current.get(b.id);
+                      if (!el) return;
+                      const plain = e.clipboardData.getData("text/plain");
+                      const sel = window.getSelection();
+                      if (!sel?.rangeCount) return;
+                      const r = sel.getRangeAt(0);
+                      if (!el.contains(r.commonAncestorContainer)) return;
+                      r.deleteContents();
+                      r.insertNode(document.createTextNode(plain));
+                      r.collapse(false);
+                      sel.removeAllRanges();
+                      sel.addRange(r);
+                      el.dispatchEvent(new Event("input", { bubbles: true }));
+                    }}
+                    onBlur={() => {
+                      if (stickyInputRaf.current != null) {
+                        window.cancelAnimationFrame(stickyInputRaf.current);
+                        stickyInputRaf.current = undefined;
+                      }
+                      const el = stickyCeRefs.current.get(b.id);
+                      const row = blocks.find((x) => x.id === b.id);
+                      if (el && row && row.kind === "sticky") {
+                        const t = stickyEditorPlainText(el);
+                        const nextB = { ...row, text: t };
+                        onBlocksChange(replaceOne(blocks, b.id, nextB), { recordHistory: true });
+                      }
+                      lastHydratedStickyId.current = null;
+                      setEditingStickyId(null);
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    data-sticky-read
+                    title="Click to write · Option/Alt+drag to move without editing"
+                    className="min-h-0 w-full min-w-0 shrink-0 cursor-text whitespace-pre-wrap break-words border-0 bg-transparent text-left outline-none ring-0 focus-visible:ring-1 focus-visible:ring-[var(--accent)] [overflow-wrap:anywhere]"
+                    style={{ fontFamily: "var(--hand)", fontSize: 17, lineHeight: 1.35, color: "var(--ink)" }}
+                    disabled={readOnly || !(selectMode || textToolMode)}
+                    onPointerDown={(e) => {
+                      if (readOnly || !selectMode) return;
+                      if (e.altKey) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onSelectId(b.id);
+                        startMove(e, b);
+                        return;
+                      }
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      if (!selectMode && !textToolMode) return;
+                      e.stopPropagation();
+                      onSelectId(b.id);
+                      setEditingTextId(null);
+                      setEditingStickyId(b.id);
+                      onEditingTextIdChange?.(null);
+                    }}
+                  >
+                    {b.text.trim() ? b.text : "\u00a0"}
+                  </button>
+                )}
+              </div>
               {selectMode && sel ? (
                 <button
                   type="button"
@@ -1017,40 +1322,246 @@ export function PageBlocksLayer({
           );
         }
 
-        return (
-          <div
-            key={b.id}
-            data-page-block-id={b.id}
-            style={{ ...base, ...zStack }}
-            className={`relative flex flex-col overflow-hidden rounded-md border bg-[var(--paper)] shadow-[var(--shadow-1)] ${
-              sel ? "border-[var(--accent)] ring-1 ring-[var(--accent)]" : "border-[var(--chrome-b)]"
-            }`}
-            onPointerDown={(e) => onBlockPointerDown(e, b)}
-          >
-            {selectMode ? (
-              <div
-                data-drag-handle
-                title="Drag — hold Shift to turn off grid snap"
-                className="flex h-7 shrink-0 cursor-grab items-center border-b border-[var(--chrome-b)] bg-[var(--paper-2)] px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-3)] active:cursor-grabbing"
-                onPointerDown={(e) => startMove(e, b)}
-              >
-                Image
+        if (b.kind === "web_embed") {
+          let host = "Web";
+          try {
+            host = new URL(b.url).hostname.replace(/^www\./, "");
+          } catch {
+            /* ignore */
+          }
+          const label = b.title?.trim() || host;
+          return (
+            <div
+              key={b.id}
+              data-page-block-id={b.id}
+              style={{ ...base, ...zStack }}
+              className={`flex flex-col overflow-hidden rounded-md border bg-[var(--paper)] shadow-[var(--shadow-1)] ${
+                sel ? "border-[var(--accent)] ring-1 ring-[var(--accent)]" : "border-[var(--chrome-b)]"
+              }`}
+              onPointerDown={(e) => onBlockPointerDown(e, b)}
+            >
+              {selectMode ? (
+                <div
+                  data-drag-handle
+                  title="Drag — hold Shift to turn off grid snap"
+                  className="flex h-7 shrink-0 cursor-grab items-center border-b border-[var(--chrome-b)] bg-[var(--paper-2)] px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-3)] active:cursor-grabbing"
+                  onPointerDown={(e) => startMove(e, b)}
+                >
+                  Web · {label}
+                </div>
+              ) : null}
+              <div className="relative flex min-h-0 flex-1 flex-col bg-[var(--paper-2)]">
+                <iframe
+                  title={label}
+                  src={b.url}
+                  className="min-h-0 w-full flex-1 border-0"
+                  sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  style={{ pointerEvents: selectMode && !dragging ? "auto" : "none" }}
+                />
+                <div className="shrink-0 border-t border-[var(--chrome-b)] bg-[var(--paper)] px-2 py-1.5">
+                  <a
+                    href={b.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-semibold text-[var(--accent)] hover:underline"
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    Open in new tab
+                  </a>
+                  <p className="mt-0.5 text-[10px] leading-snug text-[var(--ink-4)]">
+                    Some sites block embedding (blank frame). The link still works.
+                  </p>
+                </div>
               </div>
-            ) : null}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={b.src} alt="" className="h-full w-full object-contain" draggable={false} />
-            {selectMode && sel ? (
-              <button
-                type="button"
-                data-resize-handle
-                aria-label="Resize"
-                title="Resize — hold Shift to turn off grid snap"
-                className="absolute bottom-0 right-0 h-3 w-3 cursor-nwse-resize rounded-br-md border-l border-t border-[var(--chrome-b)] bg-[var(--paper-2)]"
-                onPointerDown={(e) => startResize(e, b)}
+              {selectMode && sel ? (
+                <button
+                  type="button"
+                  data-resize-handle
+                  aria-label="Resize"
+                  title="Resize — hold Shift to turn off grid snap"
+                  className="absolute bottom-0 right-0 h-3 w-3 cursor-nwse-resize rounded-br-md border-l border-t border-[var(--chrome-b)] bg-[var(--paper-2)]"
+                  onPointerDown={(e) => startResize(e, b)}
+                />
+              ) : null}
+            </div>
+          );
+        }
+
+        if (b.kind === "math") {
+          const displayMode = b.display !== false;
+          return (
+            <div
+              key={b.id}
+              data-page-block-id={b.id}
+              style={{ ...base, ...zStack }}
+              className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-dashed border-[color-mix(in_oklch,var(--ink)_16%,var(--chrome-b))] bg-[color-mix(in_oklch,var(--paper-2)_82%,var(--paper))] shadow-[var(--shadow-1)] ${
+                sel ? "ring-1 ring-[var(--accent)]" : ""
+              }`}
+              onPointerDown={(e) => onBlockPointerDown(e, b)}
+            >
+              {selectMode ? (
+                <div
+                  data-drag-handle
+                  title="Drag — hold Shift to turn off grid snap"
+                  className="flex h-7 shrink-0 cursor-grab items-center border-b border-[color-mix(in_oklch,var(--ink)_10%,var(--chrome-b))] bg-[color-mix(in_oklch,var(--paper)_70%,transparent)] px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-3)] active:cursor-grabbing"
+                  onPointerDown={(e) => startMove(e, b)}
+                >
+                  LaTeX
+                </div>
+              ) : null}
+              <div className="min-h-0 flex-1 overflow-auto">
+                <MathBlockHtml latex={b.latex} displayMode={displayMode} />
+              </div>
+              {selectMode && sel ? (
+                <button
+                  type="button"
+                  data-resize-handle
+                  aria-label="Resize"
+                  title="Resize — hold Shift to turn off grid snap"
+                  className="absolute bottom-0 right-0 z-[2] h-3 w-3 cursor-nwse-resize rounded-br-xl border-l border-t border-[color-mix(in_oklch,var(--accent)_40%,transparent)] bg-[color-mix(in_oklch,var(--paper)_70%,transparent)]"
+                  onPointerDown={(e) => startResize(e, b)}
+                />
+              ) : null}
+            </div>
+          );
+        }
+
+        if (b.kind === "code") {
+          return (
+            <div
+              key={b.id}
+              data-page-block-id={b.id}
+              style={{ ...base, ...zStack }}
+              className={`flex min-h-0 flex-col overflow-hidden rounded-xl ${
+                selectMode
+                  ? `border bg-[var(--paper)] shadow-[var(--shadow-1)] ${
+                      sel ? "border-[var(--accent)] ring-1 ring-[var(--accent)]" : "border-[var(--chrome-b)]"
+                    }`
+                  : sel
+                    ? "ring-2 ring-[var(--accent)] ring-offset-0"
+                    : ""
+              }`}
+              onPointerDown={(e) => onBlockPointerDown(e, b)}
+            >
+              {selectMode ? (
+                <div
+                  data-drag-handle
+                  title="Drag — hold Shift to turn off grid snap"
+                  className="flex h-7 shrink-0 cursor-grab items-center border-b border-[var(--chrome-b)] bg-[var(--paper-2)] px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-3)] active:cursor-grabbing"
+                  onPointerDown={(e) => startMove(e, b)}
+                >
+                  Code
+                </div>
+              ) : null}
+              <CodeEmbedBody
+                code={b.code}
+                filename={b.filename}
+                rootClassName={
+                  selectMode
+                    ? "flex-1 rounded-t-none border-t border-[color-mix(in_oklch,var(--ink)_18%,var(--chrome-b))]"
+                    : "flex-1 rounded-xl border border-[color-mix(in_oklch,var(--ink)_18%,var(--chrome-b))]"
+                }
               />
-            ) : null}
-          </div>
-        );
+              {selectMode && sel ? (
+                <button
+                  type="button"
+                  data-resize-handle
+                  aria-label="Resize"
+                  title="Resize — hold Shift to turn off grid snap"
+                  className="absolute bottom-0 right-0 z-[2] h-3 w-3 cursor-nwse-resize rounded-br-xl border-l border-t border-[var(--chrome-b)] bg-[var(--paper-2)]"
+                  onPointerDown={(e) => startResize(e, b)}
+                />
+              ) : null}
+            </div>
+          );
+        }
+
+        if (b.kind === "file_card") {
+          return (
+            <div
+              key={b.id}
+              data-page-block-id={b.id}
+              style={{ ...base, ...zStack }}
+              className={`flex flex-col overflow-hidden rounded-md border bg-[var(--paper)] shadow-[var(--shadow-1)] ${
+                sel ? "border-[var(--accent)] ring-1 ring-[var(--accent)]" : "border-[var(--chrome-b)]"
+              }`}
+              onPointerDown={(e) => onBlockPointerDown(e, b)}
+            >
+              {selectMode ? (
+                <div
+                  data-drag-handle
+                  title="Drag — hold Shift to turn off grid snap"
+                  className="flex h-7 shrink-0 cursor-grab items-center border-b border-[var(--chrome-b)] bg-[var(--paper-2)] px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-3)] active:cursor-grabbing"
+                  onPointerDown={(e) => startMove(e, b)}
+                >
+                  File
+                </div>
+              ) : null}
+              <div className="flex min-h-0 flex-1 flex-col justify-center gap-2 p-3">
+                <div className="font-[family-name:var(--font-instrument-serif)] text-sm font-medium leading-tight text-[var(--ink)]">{b.label}</div>
+                <a
+                  href={b.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex w-fit items-center rounded-md bg-[var(--ink)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--paper)] hover:opacity-90"
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  Open / download
+                </a>
+              </div>
+              {selectMode && sel ? (
+                <button
+                  type="button"
+                  data-resize-handle
+                  aria-label="Resize"
+                  title="Resize — hold Shift to turn off grid snap"
+                  className="absolute bottom-0 right-0 h-3 w-3 cursor-nwse-resize rounded-br-md border-l border-t border-[var(--chrome-b)] bg-[var(--paper-2)]"
+                  onPointerDown={(e) => startResize(e, b)}
+                />
+              ) : null}
+            </div>
+          );
+        }
+
+        if (b.kind === "image") {
+          return (
+            <div
+              key={b.id}
+              data-page-block-id={b.id}
+              style={{ ...base, ...zStack }}
+              className={`relative flex flex-col overflow-hidden rounded-md border bg-[var(--paper)] shadow-[var(--shadow-1)] ${
+                sel ? "border-[var(--accent)] ring-1 ring-[var(--accent)]" : "border-[var(--chrome-b)]"
+              }`}
+              onPointerDown={(e) => onBlockPointerDown(e, b)}
+            >
+              {selectMode ? (
+                <div
+                  data-drag-handle
+                  title="Drag — hold Shift to turn off grid snap"
+                  className="flex h-7 shrink-0 cursor-grab items-center border-b border-[var(--chrome-b)] bg-[var(--paper-2)] px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-3)] active:cursor-grabbing"
+                  onPointerDown={(e) => startMove(e, b)}
+                >
+                  Image
+                </div>
+              ) : null}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={b.src} alt="" className="h-full w-full object-contain" draggable={false} />
+              {selectMode && sel ? (
+                <button
+                  type="button"
+                  data-resize-handle
+                  aria-label="Resize"
+                  title="Resize — hold Shift to turn off grid snap"
+                  className="absolute bottom-0 right-0 h-3 w-3 cursor-nwse-resize rounded-br-md border-l border-t border-[var(--chrome-b)] bg-[var(--paper-2)]"
+                  onPointerDown={(e) => startResize(e, b)}
+                />
+              ) : null}
+            </div>
+          );
+        }
+
+        return null;
       })}
       {rectDrawMode && onShapeDrawCommit ? (
         <div

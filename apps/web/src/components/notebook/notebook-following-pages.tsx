@@ -5,6 +5,7 @@ import type { ChromeTool } from "@/components/editor/canvas-chrome-tool";
 import { FollowingPageInkSurface } from "@/components/notebook/following-page-ink-surface";
 import type { FollowingPageWriteApi } from "@/components/notebook/following-page-ink-surface";
 import type { FollowingSheetPayload } from "@/lib/notebook/following-sheets";
+import { normalizePageSize, type PageSizeId } from "@/lib/ink/page-size";
 import type { PageRoughShapeKind } from "@/lib/page-blocks/types";
 import type { UiTheme } from "@/lib/user-settings";
 
@@ -14,6 +15,7 @@ type Props = {
   moreCount: number;
   chromeTool: ChromeTool;
   setChromeToolAndClearLaser: (t: ChromeTool) => void;
+  setShapeDrawKind: (kind: PageRoughShapeKind) => void;
   shapeDrawKind: PageRoughShapeKind;
   color: string;
   penSize: number;
@@ -22,6 +24,8 @@ type Props = {
   registerFollowerApi: (pageId: string, api: FollowingPageWriteApi) => void;
   unregisterFollowerApi: (pageId: string) => void;
   onFocusWritingSurface: (pageId: string) => void;
+  /** Optimistic sheet meta while a following page is focused and edited from the right sidebar. */
+  liveFollowingMeta?: Partial<Record<string, { backgroundType?: string; pageSize?: PageSizeId }>>;
 };
 
 /** Editable later pages — same tools as the primary sheet; click a sheet to focus it for undo / block shortcuts. */
@@ -31,6 +35,7 @@ export function NotebookFollowingPages({
   moreCount,
   chromeTool,
   setChromeToolAndClearLaser,
+  setShapeDrawKind,
   shapeDrawKind,
   color,
   penSize,
@@ -39,6 +44,7 @@ export function NotebookFollowingPages({
   registerFollowerApi,
   unregisterFollowerApi,
   onFocusWritingSurface,
+  liveFollowingMeta = {},
 }: Props) {
   if (sheets.length === 0 && moreCount === 0) return null;
 
@@ -53,7 +59,9 @@ export function NotebookFollowingPages({
         </p>
       </div>
 
-      {sheets.map((s) => (
+      {sheets.map((s) => {
+        const live = liveFollowingMeta[s.pageId];
+        return (
         <FollowingPageInkSurface
           key={s.pageId}
           notebookId={notebookId}
@@ -61,12 +69,13 @@ export function NotebookFollowingPages({
           title={s.title}
           sectionBreak={s.sectionBreak}
           sectionTitle={s.sectionTitle}
-          initialBackground={s.backgroundType}
+          sheetBackground={live?.backgroundType ?? s.backgroundType}
           initialStrokes={s.strokes}
           initialBlocks={s.blocks}
-          pageSize={s.pageSize}
+          pageSize={normalizePageSize(live?.pageSize ?? s.pageSize)}
           chromeTool={chromeTool}
           setChromeToolAndClearLaser={setChromeToolAndClearLaser}
+          setShapeDrawKind={setShapeDrawKind}
           shapeDrawKind={shapeDrawKind}
           color={color}
           penSize={penSize}
@@ -76,7 +85,8 @@ export function NotebookFollowingPages({
           registerApi={registerFollowerApi}
           unregisterApi={unregisterFollowerApi}
         />
-      ))}
+        );
+      })}
 
       {moreCount > 0 ? (
         <p className="mx-auto max-w-[1180px] text-center text-sm text-[var(--ink-3)]">

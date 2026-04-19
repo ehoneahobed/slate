@@ -149,10 +149,18 @@ export async function createPageAction(notebookId: string, sectionId: string): P
   const nextPos = last ? last.position + 1 : 0;
   const pageId = crypto.randomUUID();
 
+  /** Default title uses notebook-wide ordinal so new sections are not all "Page 1". */
+  const [{ c: pageCount }] = await db
+    .select({ c: count() })
+    .from(pages)
+    .innerJoin(sections, eq(pages.sectionId, sections.id))
+    .where(eq(sections.notebookId, notebookId));
+  const nextOrdinal = Number(pageCount) + 1;
+
   await db.insert(pages).values({
     id: pageId,
     sectionId,
-    title: `Page ${nextPos + 1}`,
+    title: `Page ${nextOrdinal}`,
     position: nextPos,
     backgroundType: "ruled",
   });

@@ -24,7 +24,7 @@ export async function createShareLinkAction(notebookId: string): Promise<{ url: 
     createdByUserId: session.user.id,
   });
 
-  revalidatePath(`/dashboard/notebooks/${notebookId}`);
+  revalidatePath(`/dashboard/notebooks/${notebookId}`, "layout");
   const base = getShareBaseUrl();
   return { url: `${base}/share/${encodeURIComponent(raw)}` };
 }
@@ -39,5 +39,5 @@ export async function revokeShareLinkAction(notebookId: string, linkId: string) 
     .set({ revokedAt: new Date() })
     .where(and(eq(shareLinks.id, linkId), eq(shareLinks.notebookId, notebookId), isNull(shareLinks.revokedAt)));
 
-  revalidatePath(`/dashboard/notebooks/${notebookId}`);
+  revalidatePath(`/dashboard/notebooks/${notebookId}`, "layout");
 }
