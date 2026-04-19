@@ -7,6 +7,7 @@ import type { PageSizeId } from "@/lib/ink/page-size";
 import { INFINITE_PAGE_MIN_HEIGHT, pageFrameStyle } from "@/lib/ink/page-size";
 import type { InkStroke } from "@/lib/ink/types";
 import type { PageBlock } from "@/lib/page-blocks/types";
+import { useUiTheme } from "@/lib/ui-theme";
 
 type Props = {
   backgroundType: string;
@@ -17,6 +18,7 @@ type Props = {
 
 /** Read-only published page (public share) — ink + embeds under the same stack as the editor. */
 export function SharePageView({ backgroundType, strokes, blocks, pageSize }: Props) {
+  const uiTheme = useUiTheme();
   const isFullBleedInk = pageSize === "16_10" || pageSize === "a4" || pageSize === "letter";
 
   const stack = (
@@ -40,6 +42,7 @@ export function SharePageView({ backgroundType, strokes, blocks, pageSize }: Pro
         width={2.5}
         readOnly
         coordSpace="world-v2"
+        uiTheme={uiTheme}
       />
     </>
   );

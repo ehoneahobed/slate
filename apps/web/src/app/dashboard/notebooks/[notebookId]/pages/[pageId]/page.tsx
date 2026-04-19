@@ -2,7 +2,9 @@ import { notFound } from "next/navigation";
 import { getSession } from "@/auth";
 import { PageEditorClient } from "@/components/editor/page-editor-client";
 import { getPageContextForOwner } from "@/lib/access/page";
+import { loadFollowingSheets } from "@/lib/notebook/following-sheets";
 import { loadNotebookOutline } from "@/lib/notebook/outline";
+import { getUserTheme } from "@/lib/user-settings";
 import { normalizePageSize } from "@/lib/ink/page-size";
 import { resolvePageSheetCoords } from "@/lib/page-sheet/coords";
 
@@ -21,6 +23,10 @@ export default async function NotebookPageEditor({
   const tree = await loadNotebookOutline(notebookId);
   if (!tree) notFound();
 
+  const following = await loadFollowingSheets(notebookId, tree.outline, pageId, session.user.id);
+
+  const serverUiTheme = await getUserTheme(session.user.id);
+
   const { strokes, blocks, needsPersistWorldMigration } = resolvePageSheetCoords({
     strokesData: ctx.page.strokesData,
     blocksData: ctx.page.blocksData ?? [],
@@ -29,7 +35,7 @@ export default async function NotebookPageEditor({
 
   return (
     <PageEditorClient
-      key={pageId}
+      key={`${pageId}-${serverUiTheme}`}
       notebookId={notebookId}
       notebookTitle={tree.notebookTitle}
       outline={tree.outline}
@@ -41,6 +47,9 @@ export default async function NotebookPageEditor({
       initialBlocks={blocks}
       initialPageSize={normalizePageSize(ctx.page.pageSize ?? undefined)}
       needsPersistWorldMigration={needsPersistWorldMigration}
+      serverUiTheme={serverUiTheme}
+      followingSheets={following.sheets}
+      followingSheetsMoreCount={following.moreCount}
     />
   );
 }

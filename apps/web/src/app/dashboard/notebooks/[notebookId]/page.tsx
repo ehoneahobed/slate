@@ -55,7 +55,7 @@ export default async function NotebookPage({ params }: { params: Promise<{ noteb
     .where(and(eq(shareLinks.notebookId, notebookId), isNull(shareLinks.revokedAt)));
 
   return (
-    <main className="mx-auto max-w-3xl space-y-10 px-1 pb-16 sm:px-0">
+    <main className="mx-auto max-w-3xl touch-pan-y space-y-10 px-1 pb-16 sm:px-0">
       <div className="text-sm text-[var(--ink-3)]">
         <Link className="rounded-md font-medium text-[var(--ink-2)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)]" href="/dashboard">
           ← Dashboard

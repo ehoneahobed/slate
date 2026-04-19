@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type { InkStroke, StrokeCoordSpace } from "@/lib/ink/types";
+import type { UiTheme } from "@/lib/user-settings";
 
 function dist2(ax: number, ay: number, bx: number, by: number) {
   const dx = ax - bx;
@@ -79,8 +80,11 @@ function drawStrokePath(
 
   ctx.save();
   if (stroke.tool === "hl") {
-    ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = 0.42;
+    const dark =
+      typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "dark";
+    /** `multiply` on light paper; `screen` keeps highlighter visible on dark UI. */
+    ctx.globalCompositeOperation = dark ? "screen" : "multiply";
+    ctx.globalAlpha = dark ? 0.38 : 0.42;
   } else {
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
@@ -111,9 +115,21 @@ type Props = {
    * the same world space as `PageBlocksLayer` (typically the shared ink surface root).
    */
   worldNormRootRef?: RefObject<HTMLElement | null>;
+  /** When the UI theme changes, strokes are repainted (highlighter blend mode depends on theme). */
+  uiTheme?: UiTheme;
 };
 
-export function StrokeCanvas({ strokes, onChange, tool, color, width, readOnly, coordSpace, worldNormRootRef }: Props) {
+export function StrokeCanvas({
+  strokes,
+  onChange,
+  tool,
+  color,
+  width,
+  readOnly,
+  coordSpace,
+  worldNormRootRef,
+  uiTheme,
+}: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const strokesRef = useRef(strokes);
@@ -180,7 +196,7 @@ export function StrokeCanvas({ strokes, onChange, tool, color, width, readOnly, 
 
   useEffect(() => {
     paint();
-  }, [strokes, paint]);
+  }, [strokes, paint, uiTheme]);
 
   useEffect(() => {
     const wrap = wrapRef.current;

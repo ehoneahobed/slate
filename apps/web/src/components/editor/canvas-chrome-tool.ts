@@ -9,7 +9,8 @@ export type ChromeTool =
   | "bucket"
   | "ruler"
   | "laser"
-  | "select";
+  | "select"
+  | "move";
 
 export function isDrawingTool(t: ChromeTool): t is EditorTool {
   return t === "pen" || t === "hl" || t === "eraser";

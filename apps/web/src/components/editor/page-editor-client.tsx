@@ -16,11 +16,15 @@ import type { ChromeTool } from "@/components/editor/canvas-chrome-tool";
 import { isDrawingTool } from "@/components/editor/canvas-chrome-tool";
 import { EditorToolbarDock } from "@/components/editor/editor-toolbar-dock";
 import { InsertBlocksModal } from "@/components/editor/insert-blocks-modal";
+import type { FollowingPageWriteApi } from "@/components/notebook/following-page-ink-surface";
+import { NotebookFollowingPages } from "@/components/notebook/notebook-following-pages";
 import { LaserPointerLayer } from "@/components/editor/laser-pointer-layer";
 import { PageBackground } from "@/components/ink/page-background";
 import type { EditorTool } from "@/components/ink/stroke-canvas";
 import { StrokeCanvas } from "@/components/ink/stroke-canvas";
-import { PEN_COLORS, PEN_SIZES } from "@/lib/ink/editor-constants";
+import { defaultPenStrokeColor, penSwatches, PEN_SIZES } from "@/lib/ink/editor-constants";
+import type { UiTheme } from "@/lib/user-settings";
+import { useUiTheme } from "@/lib/ui-theme";
 import type { PageSizeId } from "@/lib/ink/page-size";
 import {
   INFINITE_PAGE_MIN_HEIGHT,
@@ -58,6 +62,7 @@ import {
   updatePageMetaAction,
   updateSectionTitleAction,
 } from "@/app/dashboard/notebooks/[notebookId]/pages/[pageId]/actions";
+import type { FollowingSheetPayload } from "@/lib/notebook/following-sheets";
 import type { OutlineSection } from "@/lib/notebook/outline";
 
 /** Preset fills for rectangle blocks (Excalidrough hachure vs solid). */
@@ -68,6 +73,52 @@ function roughShapeFillToolbarMode(b: PageBlockRoughShape): "none" | "hachure" |
   if (!b.fill) return "none";
   if (b.fillStyle === "solid") return "solid";
   return "hachure";
+}
+
+/** Full-bleed overlay: drag to scroll the page (window or focus-mode scroll container). */
+function MovePanLayer({ onPanDelta }: { onPanDelta: (dx: number, dy: number) => void }) {
+  const dragRef = useRef<{ pointerId: number; lx: number; ly: number } | null>(null);
+  return (
+    <div
+      className="absolute inset-0 z-[50] cursor-grab touch-pan-y active:cursor-grabbing"
+      aria-hidden
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+        dragRef.current = { pointerId: e.pointerId, lx: e.clientX, ly: e.clientY };
+      }}
+      onPointerMove={(e) => {
+        const d = dragRef.current;
+        if (!d || d.pointerId !== e.pointerId) return;
+        const dx = e.clientX - d.lx;
+        const dy = e.clientY - d.ly;
+        d.lx = e.clientX;
+        d.ly = e.clientY;
+        onPanDelta(dx, dy);
+      }}
+      onPointerUp={(e) => {
+        const d = dragRef.current;
+        if (!d || d.pointerId !== e.pointerId) return;
+        try {
+          (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+        dragRef.current = null;
+      }}
+      onPointerCancel={(e) => {
+        const d = dragRef.current;
+        if (!d || d.pointerId !== e.pointerId) return;
+        try {
+          (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+        dragRef.current = null;
+      }}
+    />
+  );
 }
 
 type HistorySnap = { strokes: InkStroke[]; blocks: PageBlock[] };
@@ -85,6 +136,11 @@ type Props = {
   initialPageSize: string;
   /** When true, one-time save upgrades DB from legacy arrays to world-v2 envelopes. */
   needsPersistWorldMigration: boolean;
+  /** Matches `html[data-theme]` from the server for ink defaults and swatches. */
+  serverUiTheme: UiTheme;
+  /** Read-only previews of later pages (vertical notebook flow). */
+  followingSheets?: FollowingSheetPayload[];
+  followingSheetsMoreCount?: number;
 };
 
 export function PageEditorClient({
@@ -99,8 +155,12 @@ export function PageEditorClient({
   initialBlocks,
   initialPageSize,
   needsPersistWorldMigration,
+  serverUiTheme,
+  followingSheets = [],
+  followingSheetsMoreCount = 0,
 }: Props) {
   const router = useRouter();
+  const uiTheme = useUiTheme(serverUiTheme);
   const [pending, start] = useTransition();
   const [title, setTitle] = useState(initialTitle);
   const [background, setBackground] = useState(initialBackground);
@@ -109,7 +169,7 @@ export function PageEditorClient({
   const [pageSize, setPageSize] = useState<PageSizeId>(() => normalizePageSize(initialPageSize));
   const [chromeTool, setChromeTool] = useState<ChromeTool>("pen");
   const [shapeDrawKind, setShapeDrawKind] = useState<PageRoughShapeKind>("rect");
-  const [color, setColor] = useState("#1f1c15");
+  const [color, setColor] = useState(() => defaultPenStrokeColor(serverUiTheme));
   const [penSize, setPenSize] = useState(2.5);
   const [focusMode, setFocusMode] = useState(false);
   const [studentPreview, setStudentPreview] = useState(false);
@@ -127,12 +187,20 @@ export function PageEditorClient({
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findActiveIdx, setFindActiveIdx] = useState(0);
+  /** Two-step delete page: 1 = first confirm, 2 = final confirm; null = closed. */
+  const [deletePageStep, setDeletePageStep] = useState<1 | 2 | null>(null);
+  /** Block id waiting for a second Delete/Backspace before removal. */
+  const [blockDeleteArmedForId, setBlockDeleteArmedForId] = useState<string | null>(null);
+  /** TOC sidebar: page id waiting for second click on trash before delete. */
+  const [tocPageDeleteArmId, setTocPageDeleteArmId] = useState<string | null>(null);
 
   const saveTimer = useRef<number | undefined>(undefined);
   const blocksSaveTimer = useRef<number | undefined>(undefined);
   const sectionTitleInputRef = useRef<HTMLInputElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
   const inkRef = useRef<HTMLDivElement | null>(null);
+  /** Focus mode: scroll container for Move tool panning; non-focus uses `window`. */
+  const panScrollRef = useRef<HTMLDivElement | null>(null);
   const findMatchesRef = useRef<ReturnType<typeof buildPageFindMatches>>([]);
   const pastRef = useRef<HistorySnap[]>([]);
   const futureRef = useRef<HistorySnap[]>([]);
@@ -142,6 +210,20 @@ export function PageEditorClient({
     strokesRef.current = strokes;
     blocksRef.current = blocks;
   }, [strokes, blocks]);
+
+  useEffect(() => {
+    if (blockDeleteArmedForId == null) return;
+    const t = window.setTimeout(() => setBlockDeleteArmedForId(null), 12_000);
+    return () => window.clearTimeout(t);
+  }, [blockDeleteArmedForId]);
+
+  useEffect(() => {
+    if (tocPageDeleteArmId == null) return;
+    const t = window.setTimeout(() => setTocPageDeleteArmId(null), 10_000);
+    return () => window.clearTimeout(t);
+  }, [tocPageDeleteArmId]);
+
+  const totalNotebookPages = useMemo(() => outline.reduce((n, sec) => n + sec.pages.length, 0), [outline]);
 
   useLayoutEffect(() => {
     if (!needsPersistWorldMigration) return;
@@ -179,7 +261,44 @@ export function PageEditorClient({
 
   const setChromeToolAndClearLaser = useCallback((next: ChromeTool) => {
     if (next !== "laser") setLaserNorm(null);
+    if (next !== "select" && next !== "text") setBlockDeleteArmedForId(null);
     setChromeTool(next);
+  }, []);
+
+  /** Updates selection and clears block-delete arm when the selected id changes (avoids delete-on-first-key after re-select). */
+  const syncSelectBlockId = useCallback((id: string | null) => {
+    setBlockDeleteArmedForId((armed) => (armed != null && id !== armed ? null : armed));
+    setSelectedBlockId(id);
+  }, []);
+
+  const [activeWritingPageId, setActiveWritingPageId] = useState(pageId);
+  const followerWriteApisRef = useRef<Map<string, FollowingPageWriteApi>>(new Map());
+
+  const focusWritingSurface = useCallback(
+    (nextActiveId: string) => {
+      if (nextActiveId === pageId) {
+        followerWriteApisRef.current.forEach((api) => api.blur());
+      } else {
+        syncSelectBlockId(null);
+        setPendingTextEditId(null);
+        setEditingTextBlockId(null);
+        setBlockDeleteArmedForId(null);
+        setLaserNorm(null);
+        followerWriteApisRef.current.forEach((api, id) => {
+          if (id !== nextActiveId) api.blur();
+        });
+      }
+      setActiveWritingPageId(nextActiveId);
+    },
+    [pageId, syncSelectBlockId],
+  );
+
+  const registerFollowerApi = useCallback((id: string, api: FollowingPageWriteApi) => {
+    followerWriteApisRef.current.set(id, api);
+  }, []);
+
+  const unregisterFollowerApi = useCallback((id: string) => {
+    followerWriteApisRef.current.delete(id);
   }, []);
 
   const scheduleSave = useCallback(
@@ -267,9 +386,9 @@ export function PageEditorClient({
             : { kind: "diamond", id, x: r.x, y: r.y, w: r.w, h: r.h, stroke: color, strokeWidthPx: 2 };
       const next: PageBlock[] = [...blocks, shape];
       applyBlocks(next, { recordHistory: true });
-      setSelectedBlockId(id);
+      syncSelectBlockId(id);
     },
-    [blocks, applyBlocks, color],
+    [blocks, applyBlocks, color, syncSelectBlockId],
   );
 
   const onStrokesChange = useCallback(
@@ -327,6 +446,25 @@ export function PageEditorClient({
       }
     });
   }, [notebookId, pageId, router, start]);
+
+  const runToolbarUndo = useCallback(() => {
+    if (!studentPreview && activeWritingPageId !== pageId) {
+      followerWriteApisRef.current.get(activeWritingPageId)?.undo();
+      return;
+    }
+    undo();
+  }, [studentPreview, activeWritingPageId, pageId, undo]);
+
+  const runToolbarRedo = useCallback(() => {
+    if (!studentPreview && activeWritingPageId !== pageId) {
+      followerWriteApisRef.current.get(activeWritingPageId)?.redo();
+      return;
+    }
+    redo();
+  }, [studentPreview, activeWritingPageId, pageId, redo]);
+
+  const dockCanUndo = activeWritingPageId === pageId ? canUndo : true;
+  const dockCanRedo = activeWritingPageId === pageId ? canRedo : true;
 
   useEffect(
     () => () => {
@@ -427,8 +565,8 @@ export function PageEditorClient({
     const idx = blocks.findIndex((b) => b.id === selectedBlockId);
     const next = [...blocks.slice(0, idx + 1), dup, ...blocks.slice(idx + 1)];
     applyBlocks(next, { recordHistory: true });
-    setSelectedBlockId(dup.id);
-  }, [selectedBlockId, chromeTool, blocks, applyBlocks]);
+    syncSelectBlockId(dup.id);
+  }, [selectedBlockId, chromeTool, blocks, applyBlocks, syncSelectBlockId]);
 
   const findMatches = useMemo(() => buildPageFindMatches(title, blocks, findQuery), [title, blocks, findQuery]);
 
@@ -443,7 +581,7 @@ export function PageEditorClient({
         return;
       }
       setChromeToolAndClearLaser("select");
-      setSelectedBlockId(m.blockId);
+      syncSelectBlockId(m.blockId);
       requestAnimationFrame(() => {
         const id = m.blockId;
         const sel =
@@ -453,7 +591,7 @@ export function PageEditorClient({
         document.querySelector(sel)?.scrollIntoView({ behavior: "smooth", block: "center" });
       });
     },
-    [setChromeToolAndClearLaser],
+    [setChromeToolAndClearLaser, syncSelectBlockId],
   );
 
   const goFindRelative = useCallback(
@@ -517,9 +655,9 @@ export function PageEditorClient({
     ];
     applyBlocks(next, { recordHistory: true });
     setChromeToolAndClearLaser("select");
-    setSelectedBlockId(id);
+    syncSelectBlockId(id);
     setPendingTextEditId(id);
-  }, [blocks, applyBlocks, setChromeToolAndClearLaser, background, pageSize]);
+  }, [blocks, applyBlocks, setChromeToolAndClearLaser, background, pageSize, syncSelectBlockId]);
 
   /** Click / double-click empty page — place a text block (Text tool keeps Text active). */
   const placeTextBlockAt = useCallback(
@@ -551,10 +689,10 @@ export function PageEditorClient({
       ];
       applyBlocks(next, { recordHistory: true });
       setChromeToolAndClearLaser(source === "text-tool" ? "text" : "select");
-      setSelectedBlockId(id);
+      syncSelectBlockId(id);
       setPendingTextEditId(id);
     },
-    [blocks, applyBlocks, setChromeToolAndClearLaser, background, pageSize],
+    [blocks, applyBlocks, setChromeToolAndClearLaser, background, pageSize, syncSelectBlockId],
   );
 
   function addYoutubeBlock(videoId: string) {
@@ -576,7 +714,7 @@ export function PageEditorClient({
     ];
     applyBlocks(next, { recordHistory: true });
     setChromeToolAndClearLaser("select");
-    setSelectedBlockId(id);
+    syncSelectBlockId(id);
   }
 
   function addImageBlock(src: string) {
@@ -598,7 +736,7 @@ export function PageEditorClient({
     ];
     applyBlocks(next, { recordHistory: true });
     setChromeToolAndClearLaser("select");
-    setSelectedBlockId(id);
+    syncSelectBlockId(id);
   }
 
   useEffect(() => {
@@ -606,6 +744,14 @@ export function PageEditorClient({
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName ?? "";
       const inFindBar = Boolean(target?.closest("[data-page-find-bar]"));
+
+      if (deletePageStep !== null) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setDeletePageStep(null);
+        }
+        return;
+      }
 
       if (findOpen && e.key === "Escape") {
         e.preventDefault();
@@ -625,6 +771,14 @@ export function PageEditorClient({
 
       if ((e.metaKey || e.ctrlKey) && e.key === "z") {
         e.preventDefault();
+        if (activeWritingPageId !== pageId) {
+          const api = followerWriteApisRef.current.get(activeWritingPageId);
+          if (api) {
+            if (e.shiftKey) api.redo();
+            else api.undo();
+          }
+          return;
+        }
         if (e.shiftKey) redo();
         else undo();
         return;
@@ -632,6 +786,10 @@ export function PageEditorClient({
 
       if ((e.metaKey || e.ctrlKey) && (e.key === "d" || e.key === "D")) {
         if (readOnly) return;
+        if (activeWritingPageId !== pageId) {
+          const api = followerWriteApisRef.current.get(activeWritingPageId);
+          if (api?.consumeKeydown(e)) return;
+        }
         if (!selectedBlockId || (chromeTool !== "select" && chromeTool !== "text")) return;
         e.preventDefault();
         duplicateSelectedBlock();
@@ -660,13 +818,19 @@ export function PageEditorClient({
 
       if (readOnly) return;
 
-      if (e.key === "Enter" && !e.shiftKey && selectedBlockId) {
-        const blk = blocks.find((x) => x.id === selectedBlockId);
-        if (blk?.kind === "text") {
-          e.preventDefault();
-          setChromeToolAndClearLaser("select");
-          setPendingTextEditId(selectedBlockId);
-          return;
+      if (e.key === "Enter" && !e.shiftKey) {
+        if (activeWritingPageId !== pageId) {
+          const api = followerWriteApisRef.current.get(activeWritingPageId);
+          if (api?.consumeKeydown(e)) return;
+        }
+        if (selectedBlockId) {
+          const blk = blocks.find((x) => x.id === selectedBlockId);
+          if (blk?.kind === "text") {
+            e.preventDefault();
+            setChromeToolAndClearLaser("select");
+            setPendingTextEditId(selectedBlockId);
+            return;
+          }
         }
       }
 
@@ -693,16 +857,23 @@ export function PageEditorClient({
       if (e.key === "e" || e.key === "E") setChromeToolAndClearLaser("eraser");
       if (e.key === "x" || e.key === "X") setChromeToolAndClearLaser("laser");
       if (e.key === "m" || e.key === "M") setChromeToolAndClearLaser("select");
+      if (e.key === "v" || e.key === "V") setChromeToolAndClearLaser("move");
 
-      if (
-        (e.key === "Delete" || e.key === "Backspace") &&
-        (chromeTool === "select" || chromeTool === "text") &&
-        selectedBlockId
-      ) {
-        e.preventDefault();
-        const next = blocks.filter((b) => b.id !== selectedBlockId);
-        setSelectedBlockId(null);
-        applyBlocks(next, { recordHistory: true });
+      if ((e.key === "Delete" || e.key === "Backspace") && (chromeTool === "select" || chromeTool === "text")) {
+        if (activeWritingPageId !== pageId) {
+          const api = followerWriteApisRef.current.get(activeWritingPageId);
+          if (api?.consumeKeydown(e)) return;
+        }
+        if (selectedBlockId) {
+          e.preventDefault();
+          if (blockDeleteArmedForId !== selectedBlockId) {
+            setBlockDeleteArmedForId(selectedBlockId);
+            return;
+          }
+          const next = blocks.filter((b) => b.id !== selectedBlockId);
+          syncSelectBlockId(null);
+          applyBlocks(next, { recordHistory: true });
+        }
       }
     }
     window.addEventListener("keydown", onKey);
@@ -720,11 +891,28 @@ export function PageEditorClient({
     setChromeToolAndClearLaser,
     duplicateSelectedBlock,
     goFindRelative,
+    deletePageStep,
+    blockDeleteArmedForId,
+    syncSelectBlockId,
+    activeWritingPageId,
+    pageId,
   ]);
 
   const spineTitle = notebookTitle.trim() || "Notebook";
   /** Ink + blocks fill the whole trim sheet (not a letterboxed 16:10 island). */
   const isFullBleedInk = pageSize === "16_10" || pageSize === "a4" || pageSize === "letter";
+
+  const applyPanDelta = useCallback((dx: number, dy: number) => {
+    if (focusMode) {
+      const el = panScrollRef.current;
+      if (el) {
+        el.scrollLeft -= dx;
+        el.scrollTop -= dy;
+      }
+    } else {
+      window.scrollBy({ left: -dx, top: -dy, behavior: "auto" });
+    }
+  }, [focusMode]);
 
   const inkLayers = (
     <>
@@ -735,7 +923,7 @@ export function PageEditorClient({
         tool={chromeTool}
         readOnly={readOnly}
         selectedId={selectedBlockId}
-        onSelectId={setSelectedBlockId}
+        onSelectId={syncSelectBlockId}
         pendingTextEditId={pendingTextEditId}
         onPendingTextEditConsumed={clearPendingTextEdit}
         onRequestTextAt={readOnly ? undefined : placeTextBlockAt}
@@ -755,8 +943,10 @@ export function PageEditorClient({
         readOnly={inkReadOnly}
         coordSpace="world-v2"
         worldNormRootRef={inkRef}
+        uiTheme={uiTheme}
       />
       <LaserPointerLayer active={chromeTool === "laser" && !readOnly} xNorm={laserNorm?.x ?? null} yNorm={laserNorm?.y ?? null} />
+      {chromeTool === "move" && !readOnly ? <MovePanLayer onPanDelta={applyPanDelta} /> : null}
     </>
   );
 
@@ -780,6 +970,82 @@ export function PageEditorClient({
           setChromeToolAndClearLaser("shapes");
         }}
       />
+
+      {deletePageStep !== null ? (
+        <div
+          role="presentation"
+          className="fixed inset-0 z-[100] grid place-items-center bg-[color-mix(in_oklch,var(--ink)_32%,transparent)] p-6 backdrop-blur-[4px]"
+          onClick={() => setDeletePageStep(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal
+            aria-labelledby="delete-page-dialog-title"
+            className="w-full max-w-md rounded-2xl border border-[var(--chrome-b)] bg-[var(--paper)] p-5 shadow-[var(--shadow-3)]"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            {deletePageStep === 1 ? (
+              <>
+                <h2 id="delete-page-dialog-title" className="font-[family-name:var(--font-instrument-serif)] text-xl text-[var(--ink)]">
+                  Delete this page?
+                </h2>
+                <p className="mt-2 text-[13px] leading-relaxed text-[var(--ink-3)]">
+                  This removes the page from the notebook, including its ink and blocks. You can still undo in-editor changes with Undo until you leave
+                  the page; deleting the page itself is permanent on the server.
+                </p>
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg border border-[var(--chrome-b)] bg-[var(--paper)] px-3 py-2 text-xs font-semibold text-[var(--ink-2)]"
+                    onClick={() => setDeletePageStep(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg bg-[var(--ink)] px-3 py-2 text-xs font-semibold text-[var(--paper)]"
+                    onClick={() => setDeletePageStep(2)}
+                  >
+                    Continue
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 id="delete-page-dialog-title" className="font-[family-name:var(--font-instrument-serif)] text-xl text-[var(--danger)]">
+                  Delete permanently
+                </h2>
+                <p className="mt-2 text-[13px] leading-relaxed text-[var(--ink-3)]">
+                  Last step: confirm that you want to delete this page. This cannot be undone.
+                </p>
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg border border-[var(--chrome-b)] bg-[var(--paper)] px-3 py-2 text-xs font-semibold text-[var(--ink-2)]"
+                    onClick={() => setDeletePageStep(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    className="rounded-lg border border-[color-mix(in_oklch,var(--danger)_40%,transparent)] bg-[color-mix(in_oklch,var(--danger)_12%,var(--paper))] px-3 py-2 text-xs font-semibold text-[var(--danger)] disabled:opacity-50"
+                    onClick={() =>
+                      start(async () => {
+                        setDeletePageStep(null);
+                        await deletePageAction(notebookId, pageId);
+                        router.push(`/dashboard/notebooks/${notebookId}`);
+                      })
+                    }
+                  >
+                    Delete page forever
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {!focusMode && (
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm print:hidden">
@@ -862,6 +1128,7 @@ export function PageEditorClient({
       )}
 
       <div
+        ref={panScrollRef}
         className={
           focusMode
             ? "min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain p-4 print:overflow-visible print:p-0"
@@ -871,7 +1138,7 @@ export function PageEditorClient({
         {!focusMode && (
           <aside className="sticky top-20 z-10 flex max-h-[calc(100vh-8rem)] min-h-0 flex-col gap-3 self-start overflow-hidden rounded-[var(--r-lg)] border border-[var(--rule)] bg-[var(--paper)] p-3 text-sm lg:top-24 lg:max-h-[calc(100vh-10rem)] print:hidden">
             <div className="shrink-0 text-xs font-bold uppercase tracking-wide text-[var(--ink-3)]">Sections & pages</div>
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+            <div className="min-h-0 flex-1 touch-pan-y space-y-4 overflow-y-auto overscroll-y-contain pr-1">
               {outline.map((sec) => {
                 const nav = [...sec.pages].sort((a, b) => a.position - b.position);
                 const isCurrentSection = sec.id === sectionId;
@@ -944,15 +1211,66 @@ export function PageEditorClient({
                     ) : (
                       <ul className="space-y-0.5 border-l border-[var(--chrome-b)] pl-2">
                         {nav.map((p) => (
-                          <li key={p.id}>
+                          <li key={p.id} className="flex items-center gap-0.5">
                             <Link
-                              className={`block truncate rounded-md px-2 py-1 text-[13px] hover:bg-[var(--paper-2)] ${
+                              className={`min-w-0 flex-1 truncate rounded-md px-2 py-1 text-[13px] hover:bg-[var(--paper-2)] ${
                                 p.id === pageId ? "bg-[var(--accent-soft)] font-semibold text-[var(--ink)]" : "text-[var(--ink-2)]"
                               }`}
                               href={`/dashboard/notebooks/${notebookId}/pages/${p.id}`}
                             >
                               {p.title}
                             </Link>
+                            {!readOnly ? (
+                              <button
+                                type="button"
+                                title={
+                                  totalNotebookPages <= 1
+                                    ? "Cannot delete the only page in this notebook"
+                                    : tocPageDeleteArmId === p.id
+                                      ? "Click again to delete"
+                                      : "Delete page"
+                                }
+                                disabled={pending || totalNotebookPages <= 1}
+                                aria-label={tocPageDeleteArmId === p.id ? "Confirm delete page" : "Delete page"}
+                                className={`grid h-7 w-7 shrink-0 place-items-center rounded-md border border-transparent text-[var(--ink-3)] hover:border-[var(--chrome-b)] hover:bg-[var(--paper-2)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-40 ${
+                                  tocPageDeleteArmId === p.id ? "border-[color-mix(in_oklch,var(--danger)_45%,transparent)] bg-[color-mix(in_oklch,var(--danger)_10%,var(--paper))] text-[var(--danger)]" : ""
+                                }`}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (totalNotebookPages <= 1) return;
+                                  if (tocPageDeleteArmId !== p.id) {
+                                    setTocPageDeleteArmId(p.id);
+                                    return;
+                                  }
+                                  setTocPageDeleteArmId(null);
+                                  start(async () => {
+                                    await deletePageAction(notebookId, p.id);
+                                    if (p.id === pageId) {
+                                      router.push(`/dashboard/notebooks/${notebookId}`);
+                                    } else {
+                                      router.refresh();
+                                    }
+                                  });
+                                }}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
+                                  <path d="M5 6.5h10" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+                                  <path
+                                    d="M8 6.5V5h4v1.5"
+                                    stroke="currentColor"
+                                    strokeWidth="1.25"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                  <path
+                                    d="M6.5 8.5l1 7h5l1-7"
+                                    stroke="currentColor"
+                                    strokeWidth="1.25"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </button>
+                            ) : null}
                           </li>
                         ))}
                       </ul>
@@ -1010,14 +1328,9 @@ export function PageEditorClient({
                 type="button"
                 disabled={pending}
                 className="rounded-md border border-[color-mix(in_oklch,var(--danger)_35%,transparent)] px-3 py-2 text-xs font-semibold text-[var(--danger)]"
-                onClick={() =>
-                  start(async () => {
-                    await deletePageAction(notebookId, pageId);
-                    router.push(`/dashboard/notebooks/${notebookId}`);
-                  })
-                }
+                onClick={() => setDeletePageStep(1)}
               >
-                Delete page
+                Delete page…
               </button>
             </div>
           </aside>
@@ -1111,6 +1424,21 @@ export function PageEditorClient({
             </div>
           )}
 
+          {!readOnly &&
+          blockDeleteArmedForId &&
+          selectedBlockId === blockDeleteArmedForId &&
+          (chromeTool === "select" || chromeTool === "text") ? (
+            <div
+              role="status"
+              className="sticky top-2 z-[36] rounded-xl border border-[color-mix(in_oklch,var(--danger)_28%,var(--chrome-b))] bg-[color-mix(in_oklch,var(--danger)_8%,var(--paper))] px-3 py-2 text-[12px] leading-snug text-[var(--ink-2)] shadow-[var(--shadow-2)] print:hidden"
+            >
+              <span className="font-semibold text-[var(--danger)]">Remove block:</span> press{" "}
+              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">Delete</kbd> or{" "}
+              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">Backspace</kbd> again within 12
+              seconds, or change selection to cancel.
+            </div>
+          ) : null}
+
           {studentPreview && (
             <div className="flex items-center gap-2 rounded-full border border-[var(--chrome-b)] bg-[var(--paper-2)] px-3 py-2 text-xs text-[var(--ink-2)] print:hidden">
               Student preview — ink and blocks are read-only (private annotations ship in a later phase).
@@ -1127,10 +1455,10 @@ export function PageEditorClient({
                   onColorChange={setColor}
                   penSize={penSize}
                   onPenSizeChange={setPenSize}
-                  onUndo={undo}
-                  onRedo={redo}
-                  canUndo={canUndo}
-                  canRedo={canRedo}
+                  onUndo={runToolbarUndo}
+                  onRedo={runToolbarRedo}
+                  canUndo={dockCanUndo}
+                  canRedo={dockCanRedo}
                   onInsert={() => setInsertOpen(true)}
                   readOnly={readOnly}
                   textFontSizePx={textBlockToolbar?.px}
@@ -1139,6 +1467,7 @@ export function PageEditorClient({
                   onTextFontFamilyChange={textBlockToolbar ? setSelectedTextFontFamily : undefined}
                   shapeDrawKind={shapeDrawKind}
                   onShapeDrawKindChange={setShapeDrawKind}
+                  ssrUiTheme={serverUiTheme}
                 />
               </div>
             )}
@@ -1154,6 +1483,7 @@ export function PageEditorClient({
                   <div
                     ref={inkRef}
                     className="relative isolate h-full w-full overflow-hidden"
+                    onPointerDownCapture={() => focusWritingSurface(pageId)}
                     onPointerMove={onInkPointerMove}
                     onPointerLeave={onInkPointerLeave}
                   >
@@ -1165,6 +1495,7 @@ export function PageEditorClient({
                   ref={inkRef}
                   className="relative isolate w-full overflow-hidden"
                   style={{ minHeight: INFINITE_PAGE_MIN_HEIGHT }}
+                  onPointerDownCapture={() => focusWritingSurface(pageId)}
                   onPointerMove={onInkPointerMove}
                   onPointerLeave={onInkPointerLeave}
                 >
@@ -1172,6 +1503,23 @@ export function PageEditorClient({
                 </div>
               ) : null}
             </div>
+            {!focusMode && (followingSheets.length > 0 || followingSheetsMoreCount > 0) ? (
+              <NotebookFollowingPages
+                notebookId={notebookId}
+                sheets={followingSheets}
+                moreCount={followingSheetsMoreCount}
+                chromeTool={chromeTool}
+                setChromeToolAndClearLaser={setChromeToolAndClearLaser}
+                shapeDrawKind={shapeDrawKind}
+                color={color}
+                penSize={penSize}
+                readOnly={readOnly}
+                serverUiTheme={serverUiTheme}
+                registerFollowerApi={registerFollowerApi}
+                unregisterFollowerApi={unregisterFollowerApi}
+                onFocusWritingSurface={focusWritingSurface}
+              />
+            ) : null}
           </div>
 
           {!readOnly && (
@@ -1183,6 +1531,14 @@ export function PageEditorClient({
               </button>
               <button type="button" className="shrink-0 rounded-md border border-[var(--chrome-b)] px-2 py-1 text-[10px] font-semibold" disabled={!canRedo} onClick={() => redo()}>
                 Redo
+              </button>
+              <button
+                type="button"
+                title="Insert text, image, video, or shape"
+                className="shrink-0 rounded-md border border-[var(--chrome-b)] px-2 py-1 text-sm font-semibold leading-none text-[var(--ink-2)]"
+                onClick={() => setInsertOpen(true)}
+              >
+                +
               </button>
               {(chromeTool === "select" || chromeTool === "text") && selectedBlockId ? (
                 <button
@@ -1215,7 +1571,7 @@ export function PageEditorClient({
                 </>
               ) : null}
               <span className="mx-1 h-6 w-px shrink-0 bg-[var(--chrome-b)]" />
-              {(["pen", "hl", "eraser", "text", "select", "laser"] as const).map((t) => (
+              {(["move", "select", "pen", "hl", "text", "eraser", "laser", "shapes"] as const).map((t) => (
                 <button
                   key={t}
                   type="button"
@@ -1224,24 +1580,9 @@ export function PageEditorClient({
                     chromeTool === t ? "bg-[var(--ink)] text-[var(--paper)]" : "text-[var(--ink-2)] hover:bg-[var(--paper-2)]"
                   }`}
                 >
-                  {t}
+                  {t === "hl" ? "Hl" : t === "move" ? "Pan" : t}
                 </button>
               ))}
-              <button
-                type="button"
-                className="shrink-0 rounded-md border border-[var(--chrome-b)] px-2 py-1 text-[10px] font-semibold"
-                onClick={() => setInsertOpen(true)}
-              >
-                +
-              </button>
-              <button
-                type="button"
-                title="Shapes — rectangle, ellipse, diamond"
-                className="shrink-0 rounded-md border border-[var(--chrome-b)] px-2 py-1 text-[10px] font-semibold text-[var(--ink-2)]"
-                onClick={() => setChromeToolAndClearLaser("shapes")}
-              >
-                Shape
-              </button>
               {chromeTool === "shapes" ? (
                 <>
                   {(["rect", "ellipse", "diamond"] as const).map((k) => (
@@ -1260,7 +1601,7 @@ export function PageEditorClient({
                 </>
               ) : null}
               <span className="mx-1 h-6 w-px shrink-0 bg-[var(--chrome-b)]" />
-              {PEN_COLORS.map((c) => (
+              {penSwatches(uiTheme).map((c) => (
                 <button
                   key={c}
                   type="button"
@@ -1435,7 +1776,11 @@ export function PageEditorClient({
               opens to the right of the dock.{" "}
               <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">⌘D</kbd> /{" "}
               <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">Ctrl+D</kbd> duplicates the
-              selected block. Use <span className="font-semibold text-[var(--ink-2)]">Print / PDF</span> (top bar or focus bar) to open the system
+              selected block. With Select or Text active, press{" "}
+              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">Delete</kbd> or{" "}
+              <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">Backspace</kbd> twice to remove a
+              selected block (not while typing inside a note). Use <span className="font-semibold text-[var(--ink-2)]">Print / PDF</span> (top bar or
+              focus bar) to open the system
               print dialog — choose “Save as PDF” where your browser or OS offers it.{" "}
               <span className="font-semibold text-[var(--ink-2)]">Find</span> (or{" "}
               <kbd className="rounded border border-[var(--chrome-b)] bg-[var(--paper-2)] px-1 font-mono text-[10px]">⌘F</kbd> /{" "}

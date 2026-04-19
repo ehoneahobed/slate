@@ -3,8 +3,10 @@
 import type { ReactNode } from "react";
 import type { ChromeTool } from "@/components/editor/canvas-chrome-tool";
 import { isDrawingTool } from "@/components/editor/canvas-chrome-tool";
-import { PEN_COLORS, PEN_SIZES } from "@/lib/ink/editor-constants";
+import { penSwatches, PEN_SIZES } from "@/lib/ink/editor-constants";
+import { useUiTheme } from "@/lib/ui-theme";
 import type { PageRoughShapeKind, PageTextFontId } from "@/lib/page-blocks/types";
+import type { UiTheme } from "@/lib/user-settings";
 import { NOTEBOOK_TEXT_SIZE_PRESETS, pageTextFontStack } from "@/lib/page-blocks/text-typography";
 
 type Props = {
@@ -28,6 +30,8 @@ type Props = {
   /** Active rough shape when the Shapes tool is on (rect / ellipse / diamond). */
   shapeDrawKind?: PageRoughShapeKind;
   onShapeDrawKindChange?: (k: PageRoughShapeKind) => void;
+  /** From server `getUserTheme` — keeps ink swatches aligned with `html[data-theme]` on first paint. */
+  ssrUiTheme?: UiTheme;
 };
 
 function DockBtn({
@@ -90,7 +94,10 @@ export function EditorToolbarDock({
   onTextFontFamilyChange,
   shapeDrawKind = "rect",
   onShapeDrawKindChange,
+  ssrUiTheme,
 }: Props) {
+  const uiTheme = useUiTheme(ssrUiTheme);
+  const inkSwatches = penSwatches(uiTheme);
   const showInkFlyout = isDrawingTool(tool) && tool !== "eraser";
   const showShapeFlyout =
     tool === "shapes" && !readOnly && typeof onShapeDrawKindChange === "function";
@@ -128,6 +135,56 @@ export function EditorToolbarDock({
             </svg>
           </DockBtn>
           <Divider />
+          <DockBtn active={false} title="Insert text, image, video, or shape ( / )" onClick={onInsert} disabled={readOnly}>
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
+              <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </DockBtn>
+          <Divider />
+          <DockBtn active={tool === "move"} title="Move — drag to pan the page (V)" onClick={() => onToolChange("move")}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M18 8v2a4 4 0 0 1-4 4h-2a4 4 0 0 0-4 4v2"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M18 13h-3M10 18H8a2 2 0 0 1-2-2v-3"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </DockBtn>
+          <DockBtn active={tool === "select"} title="Select — move & edit blocks (M)" onClick={() => onToolChange("select")}>
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
+              <path d="M4 4l6 14 2-5 5-1-13-8z" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
+            </svg>
+          </DockBtn>
           <DockBtn active={tool === "pen"} title="Pen (P)" onClick={() => onToolChange("pen")}>
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
               <path
@@ -140,6 +197,16 @@ export function EditorToolbarDock({
           <DockBtn active={tool === "hl"} title="Highlighter (H)" onClick={() => onToolChange("hl")}>
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
               <path d="M4 16L14 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+          </DockBtn>
+          <DockBtn
+            active={tool === "text"}
+            title={readOnly ? "Text — read-only" : "Text (T) — click page to type"}
+            disabled={readOnly}
+            onClick={() => onToolChange("text")}
+          >
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
+              <path d="M6 4h8M10 4v12M7 16h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
             </svg>
           </DockBtn>
           <DockBtn active={tool === "eraser"} title="Eraser (E)" onClick={() => onToolChange("eraser")}>
@@ -177,16 +244,6 @@ export function EditorToolbarDock({
               <circle cx="14" cy="12" r="3" stroke="currentColor" strokeWidth="1.4" />
             </svg>
           </DockBtn>
-          <DockBtn
-            active={tool === "text"}
-            title={readOnly ? "Text — read-only" : "Text (T) — click page to type"}
-            disabled={readOnly}
-            onClick={() => onToolChange("text")}
-          >
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
-              <path d="M6 4h8M10 4v12M7 16h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
-          </DockBtn>
           <DockBtn active={tool === "bucket"} title="Fill (coming soon)" disabled onClick={() => onToolChange("bucket")}>
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
               <path d="M10 3l6 6-4 4-6-6 4-4z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
@@ -203,17 +260,6 @@ export function EditorToolbarDock({
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
               <circle cx="10" cy="10" r="3" fill="currentColor" />
               <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.2" opacity={0.45} />
-            </svg>
-          </DockBtn>
-          <DockBtn active={tool === "select"} title="Select — move & edit blocks (M)" onClick={() => onToolChange("select")}>
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
-              <path d="M4 4l6 14 2-5 5-1-13-8z" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
-            </svg>
-          </DockBtn>
-          <Divider />
-          <DockBtn active={false} title="Insert media" onClick={onInsert}>
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
-              <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
             </svg>
           </DockBtn>
         </div>
@@ -324,7 +370,7 @@ export function EditorToolbarDock({
           <div className={`${dockShell} flex-col`} style={{ ...dockStyle }}>
             <div className="px-0.5 pb-0.5 text-[9.5px] font-bold uppercase tracking-wide text-[var(--ink-3)]">Color</div>
             <div className="grid grid-cols-2 gap-1.5 px-0.5">
-              {PEN_COLORS.map((c) => (
+              {inkSwatches.map((c) => (
                 <button
                   key={c}
                   type="button"

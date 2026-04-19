@@ -7,6 +7,7 @@ import { updateNotebookTitleAction } from "@/app/dashboard/notebooks/[notebookId
 import {
   createPageAction,
   createSectionAction,
+  deletePageAction,
   updateSectionTitleAction,
 } from "@/app/dashboard/notebooks/[notebookId]/pages/[pageId]/actions";
 
@@ -82,6 +83,9 @@ export function NotebookOverviewClient({
 }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const outlineScrollRef = useRef<HTMLDivElement | null>(null);
+  const outlineDragRef = useRef<{ pointerId: number; lastY: number } | null>(null);
+  const [pageDeleteArmId, setPageDeleteArmId] = useState<string | null>(null);
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const titleInputRef = useRef<HTMLInputElement | null>(null);
@@ -89,6 +93,12 @@ export function NotebookOverviewClient({
   useEffect(() => {
     if (titleEditing) titleInputRef.current?.focus({ preventScroll: true });
   }, [titleEditing]);
+
+  useEffect(() => {
+    if (pageDeleteArmId == null) return;
+    const t = window.setTimeout(() => setPageDeleteArmId(null), 10_000);
+    return () => window.clearTimeout(t);
+  }, [pageDeleteArmId]);
 
   const commitTitle = useCallback(() => {
     const next = titleDraft.trim();
@@ -113,6 +123,7 @@ export function NotebookOverviewClient({
   );
 
   const accent = notebookColor && /^#[0-9a-f]{6}$/i.test(notebookColor) ? notebookColor : "var(--accent)";
+  const canDeleteAnyPage = pages.length > 1;
 
   return (
     <div className="space-y-8">
@@ -181,7 +192,7 @@ export function NotebookOverviewClient({
       </header>
 
       <section
-        className="overflow-hidden rounded-2xl border border-[var(--rule)] bg-[var(--paper)] shadow-[var(--shadow-1)]"
+        className="overflow-x-hidden rounded-2xl border border-[var(--rule)] bg-[var(--paper)] shadow-[var(--shadow-1)]"
         aria-labelledby="outline-heading"
       >
         <div
@@ -197,7 +208,6 @@ export function NotebookOverviewClient({
           <button
             type="button"
             disabled={pending}
-            onMouseDown={(e) => e.preventDefault()}
             onClick={() =>
               start(async () => {
                 await createSectionAction(notebookId);
@@ -210,7 +220,54 @@ export function NotebookOverviewClient({
           </button>
         </div>
 
-        <div className="divide-y divide-[var(--chrome-b)]">
+        <div className="flex max-h-[min(72dvh,820px)] min-h-0">
+          <div
+            className="hidden w-7 shrink-0 select-none touch-none sm:flex sm:flex-col sm:items-center sm:border-r sm:border-[var(--chrome-b)] sm:bg-[var(--paper-2)] sm:py-3"
+            aria-label="Drag up or down to scroll the outline"
+            title="Drag to scroll (stylus / pen friendly)"
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+              outlineDragRef.current = { pointerId: e.pointerId, lastY: e.clientY };
+            }}
+            onPointerMove={(e) => {
+              const d = outlineDragRef.current;
+              const el = outlineScrollRef.current;
+              if (!d || !el || d.pointerId !== e.pointerId) return;
+              const dy = e.clientY - d.lastY;
+              d.lastY = e.clientY;
+              el.scrollTop -= dy;
+            }}
+            onPointerUp={(e) => {
+              const d = outlineDragRef.current;
+              if (!d || d.pointerId !== e.pointerId) return;
+              try {
+                (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+              } catch {
+                /* ignore */
+              }
+              outlineDragRef.current = null;
+            }}
+            onPointerCancel={(e) => {
+              const d = outlineDragRef.current;
+              if (!d || d.pointerId !== e.pointerId) return;
+              try {
+                (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+              } catch {
+                /* ignore */
+              }
+              outlineDragRef.current = null;
+            }}
+          >
+            <span className="px-0.5 text-center text-[8px] font-bold uppercase leading-tight tracking-wide text-[var(--ink-4)] [writing-mode:vertical-rl]">
+              Scroll
+            </span>
+          </div>
+          <div
+            ref={outlineScrollRef}
+            className="min-h-0 min-w-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
+          >
+            <div className="divide-y divide-[var(--chrome-b)]">
           {sortedSections.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-[var(--ink-3)]">No sections yet. Create one to get started.</p>
           ) : (
@@ -233,7 +290,6 @@ export function NotebookOverviewClient({
                     <button
                       type="button"
                       disabled={pending}
-                      onMouseDown={(e) => e.preventDefault()}
                       onClick={() =>
                         start(async () => {
                           const { pageId } = await createPageAction(notebookId, sec.id);
@@ -253,10 +309,10 @@ export function NotebookOverviewClient({
                   ) : (
                     <ul className="mt-4 space-y-1.5">
                       {secPages.map((p) => (
-                        <li key={p.id}>
+                        <li key={p.id} className="flex items-stretch gap-2">
                           <Link
                             href={`/dashboard/notebooks/${notebookId}/pages/${p.id}`}
-                            className="group flex items-center justify-between gap-3 rounded-xl border border-transparent px-3 py-2.5 transition-colors hover:border-[var(--chrome-b)] hover:bg-[var(--paper-2)]"
+                            className="group flex min-w-0 flex-1 items-center justify-between gap-3 rounded-xl border border-transparent px-3 py-2.5 transition-colors hover:border-[var(--chrome-b)] hover:bg-[var(--paper-2)]"
                           >
                             <span className="flex min-w-0 items-center gap-3">
                               <span
@@ -284,6 +340,47 @@ export function NotebookOverviewClient({
                               Open →
                             </span>
                           </Link>
+                          <button
+                            type="button"
+                            title={
+                              !canDeleteAnyPage
+                                ? "Cannot delete the only page in this notebook"
+                                : pageDeleteArmId === p.id
+                                  ? "Click again to delete"
+                                  : "Delete page"
+                            }
+                            disabled={pending || !canDeleteAnyPage}
+                            aria-label={pageDeleteArmId === p.id ? "Confirm delete page" : "Delete page"}
+                            className={`grid w-10 shrink-0 place-items-center self-center rounded-xl border text-[var(--ink-3)] transition-colors hover:bg-[var(--paper-2)] hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-40 ${
+                              pageDeleteArmId === p.id
+                                ? "border-[color-mix(in_oklch,var(--danger)_45%,transparent)] bg-[color-mix(in_oklch,var(--danger)_10%,var(--paper))] text-[var(--danger)]"
+                                : "border-transparent"
+                            }`}
+                            onClick={() => {
+                              if (!canDeleteAnyPage) return;
+                              if (pageDeleteArmId !== p.id) {
+                                setPageDeleteArmId(p.id);
+                                return;
+                              }
+                              setPageDeleteArmId(null);
+                              start(async () => {
+                                await deletePageAction(notebookId, p.id);
+                                router.refresh();
+                              });
+                            }}
+                          >
+                            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
+                              <path d="M5 6.5h10" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+                              <path
+                                d="M8 6.5V5h4v1.5"
+                                stroke="currentColor"
+                                strokeWidth="1.25"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                              <path d="M6.5 8.5l1 7h5l1-7" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+                            </svg>
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -292,6 +389,8 @@ export function NotebookOverviewClient({
               );
             })
           )}
+            </div>
+          </div>
         </div>
       </section>
     </div>
