@@ -751,6 +751,30 @@ export function PageBlocksLayer({
       return;
     }
 
+    /** Code / math: move like sticky notes — Alt/Option+drag from anywhere, or drag from embed chrome (code) / body (math). */
+    if ((b.kind === "code" || b.kind === "math") && selectMode) {
+      const t = e.target as HTMLElement;
+      if (e.altKey) {
+        e.stopPropagation();
+        e.preventDefault();
+        onSelectId(b.id);
+        startMove(e, b);
+        return;
+      }
+      if (b.kind === "code" && t.closest("[data-code-chrome]")) {
+        e.stopPropagation();
+        onSelectId(b.id);
+        startMove(e, b);
+        return;
+      }
+      if (b.kind === "math" && t.closest("[data-math-body]")) {
+        e.stopPropagation();
+        onSelectId(b.id);
+        startMove(e, b);
+        return;
+      }
+    }
+
     onSelectId(b.id);
   }
 
@@ -1395,6 +1419,7 @@ export function PageBlocksLayer({
               key={b.id}
               data-page-block-id={b.id}
               style={{ ...base, ...zStack }}
+              title={selectMode ? "Select tool: drag the LaTeX bar or math area to move. Hold Alt/Option and drag anywhere to move." : undefined}
               className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-dashed border-[color-mix(in_oklch,var(--ink)_16%,var(--chrome-b))] bg-[color-mix(in_oklch,var(--paper-2)_82%,var(--paper))] shadow-[var(--shadow-1)] ${
                 sel ? "ring-1 ring-[var(--accent)]" : ""
               }`}
@@ -1403,14 +1428,14 @@ export function PageBlocksLayer({
               {selectMode ? (
                 <div
                   data-drag-handle
-                  title="Drag — hold Shift to turn off grid snap"
+                  title="Drag to move · Alt/Option+drag anywhere on the block · hold Shift to turn off grid snap"
                   className="flex h-7 shrink-0 cursor-grab items-center border-b border-[color-mix(in_oklch,var(--ink)_10%,var(--chrome-b))] bg-[color-mix(in_oklch,var(--paper)_70%,transparent)] px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-3)] active:cursor-grabbing"
                   onPointerDown={(e) => startMove(e, b)}
                 >
                   LaTeX
                 </div>
               ) : null}
-              <div className="min-h-0 flex-1 overflow-auto">
+              <div data-math-body className="min-h-0 flex-1 cursor-grab overflow-auto active:cursor-grabbing">
                 <MathBlockHtml latex={b.latex} displayMode={displayMode} />
               </div>
               {selectMode && sel ? (
@@ -1433,7 +1458,12 @@ export function PageBlocksLayer({
               key={b.id}
               data-page-block-id={b.id}
               style={{ ...base, ...zStack }}
-              className={`flex min-h-0 flex-col overflow-hidden rounded-xl ${
+              title={
+                selectMode
+                  ? "Select tool: drag the Code bar or window title strip to move. Hold Alt/Option and drag anywhere (including the code) to move."
+                  : undefined
+              }
+              className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl ${
                 selectMode
                   ? `border bg-[var(--paper)] shadow-[var(--shadow-1)] ${
                       sel ? "border-[var(--accent)] ring-1 ring-[var(--accent)]" : "border-[var(--chrome-b)]"
@@ -1447,16 +1477,18 @@ export function PageBlocksLayer({
               {selectMode ? (
                 <div
                   data-drag-handle
-                  title="Drag — hold Shift to turn off grid snap"
-                  className="flex h-7 shrink-0 cursor-grab items-center border-b border-[var(--chrome-b)] bg-[var(--paper-2)] px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-3)] active:cursor-grabbing"
+                  title="Drag to move · Alt/Option+drag anywhere on the block · hold Shift to turn off grid snap"
+                  className="flex h-7 min-w-0 shrink-0 cursor-grab items-center border-b border-[var(--chrome-b)] bg-[var(--paper-2)] px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-3)] active:cursor-grabbing"
                   onPointerDown={(e) => startMove(e, b)}
                 >
-                  Code
+                  <span>Code</span>
+                  <span className="ml-auto shrink-0 text-[9px] font-normal normal-case tracking-normal text-[var(--ink-4)]">Alt+drag anywhere</span>
                 </div>
               ) : null}
               <CodeEmbedBody
                 code={b.code}
                 filename={b.filename}
+                chromeDraggable={!readOnly}
                 rootClassName={
                   selectMode
                     ? "flex-1 rounded-t-none border-t border-[color-mix(in_oklch,var(--ink)_18%,var(--chrome-b))]"
