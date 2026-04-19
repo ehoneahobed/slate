@@ -11,6 +11,15 @@ function resolveBaseUrl(): string {
   return "http://localhost:3010";
 }
 
+/** Static list from env; `trustedOrigins` merges this with the request origin in development (LAN IP, etc.). */
+function extraTrustedOriginsFromEnv(): string[] {
+  return (
+    process.env.BETTER_AUTH_TRUSTED_ORIGINS?.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean) ?? []
+  );
+}
+
 function resolveSecret(): string {
   const s = process.env.BETTER_AUTH_SECRET?.trim() || process.env.AUTH_SECRET?.trim();
   if (s && s.length >= 32) return s;
@@ -49,6 +58,25 @@ export const auth = betterAuth({
   appName: "Slate",
   baseURL: resolveBaseUrl(),
   secret: resolveSecret(),
+  /**
+   * In dev, trust the browser’s actual origin (e.g. `http://192.168.x.x:3010`) so `/api/auth/get-session`
+   * does not fail CSRF/origin checks when `BETTER_AUTH_URL` still points at localhost.
+   */
+  trustedOrigins:
+    process.env.NODE_ENV === "development"
+      ? async (request) => {
+          const list = [resolveBaseUrl(), ...extraTrustedOriginsFromEnv()];
+          if (request?.url) {
+            try {
+              const origin = new URL(request.url).origin;
+              if (!list.includes(origin)) list.push(origin);
+            } catch {
+              /* ignore malformed request.url */
+            }
+          }
+          return list;
+        }
+      : [resolveBaseUrl(), ...extraTrustedOriginsFromEnv()],
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: {
